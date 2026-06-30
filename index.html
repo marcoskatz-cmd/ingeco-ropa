@@ -172,6 +172,11 @@
   .cards-grid .card { margin-bottom: 0; }
   @media (max-width: 520px) { .cards-grid { grid-template-columns: 1fr; } }
 
+  /* Barra de filtros (buscador + prenda) */
+  .filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 4px 0 14px; }
+  .filtros .seg { margin-bottom: 0; }
+  .filtro-q { max-width: 340px; flex: 1 1 240px; }
+
   /* ---------- Chips de resumen ---------- */
   .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
   .chip {
@@ -451,6 +456,56 @@
       (innegociable ? ' <span class="badge inneg">INNEGOCIABLE</span>' : '');
     if (e === 'ELEGIBLE') return '<span class="badge elegible">ELEGIBLE</span>';
     return '<span class="badge sindato">SIN DATO</span>';
+  }
+
+  /* ===================== Filtros (buscador + prenda) ===================== */
+  var FILTROS = {
+    comprar:   { q: '', prenda: '' },
+    entrega:   { q: '', prenda: '' },
+    roturas:   { q: '', prenda: '' },
+    personal:  { q: '' },
+    historial: { q: '' }
+  };
+  var PRENDAS_FILTRO = ['PANTALON', 'CAMISA', 'BOTIN'];
+  var PRENDA_LABEL = { PANTALON: 'Pantalón', CAMISA: 'Camisa', BOTIN: 'Botín' };
+
+  /** HTML de la barra de filtros. conPrenda activa los botones Todas/Pant/Cam/Botín. */
+  function filtrosHtml(state, conPrenda, placeholder) {
+    var seg = '';
+    if (conPrenda) {
+      var ops = [['', 'Todas']].concat(PRENDAS_FILTRO.map(function (p) { return [p, PRENDA_LABEL[p]]; }));
+      seg = '<div class="seg filtro-prenda">' + ops.map(function (o) {
+        return '<button class="seg-btn ' + (state.prenda === o[0] ? 'activo' : '') + '" data-prenda="' + esc(o[0]) + '">' +
+          esc(o[1]) + '</button>';
+      }).join('') + '</div>';
+    }
+    return '<div class="filtros">' +
+      '<input type="search" class="filtro-q" placeholder="' + esc(placeholder || 'Buscar…') + '" value="' + esc(state.q || '') + '">' +
+      seg +
+    '</div>';
+  }
+
+  /** Conecta los eventos de una barra ya pintada; onChange se llama en cada cambio. */
+  function wireFiltrosBar(scopeEl, state, onChange) {
+    var q = scopeEl.querySelector('.filtro-q');
+    if (q) q.addEventListener('input', function () { state.q = q.value; onChange(); });
+    Array.prototype.forEach.call(scopeEl.querySelectorAll('.filtro-prenda .seg-btn'), function (b) {
+      b.addEventListener('click', function () {
+        state.prenda = b.getAttribute('data-prenda');
+        Array.prototype.forEach.call(scopeEl.querySelectorAll('.filtro-prenda .seg-btn'), function (x) {
+          x.classList.toggle('activo', x === b);
+        });
+        onChange();
+      });
+    });
+  }
+
+  /** true si todas las palabras del query aparecen en alguno de los campos. */
+  function coincideBusqueda(q, partes) {
+    q = String(q || '').trim().toLowerCase();
+    if (!q) return true;
+    var h = partes.map(function (p) { return String(p == null ? '' : p); }).join(' ').toLowerCase();
+    return q.split(/\s+/).every(function (w) { return h.indexOf(w) >= 0; });
   }
 
   /* ===================== Modal ===================== */
@@ -772,8 +827,10 @@
     });
   }
 
+  var entregaPend = null;
   function pintarPendientes(p) {
     p = p || {};
+    entregaPend = p;
     if (!p.hayCompra) {
       $('pendBody').innerHTML = '<div class="card" style="max-width:640px"><h3 class="sub-tit">Pendientes de la última compra</h3>' +
         vacio('Todavía no hay ninguna compra congelada. Congelá una en Comprar para armar la lista de entrega.') + '</div>';
@@ -787,7 +844,24 @@
         vacio('Todo lo de la última compra ya se entregó. 👌') + '</div>';
       return;
     }
-    var cards = p.personas.map(function (per) {
+    $('pendBody').innerHTML = enc +
+      '<div id="pendFiltros"></div>' +
+      '<div id="pendCards"></div>';
+    $('pendFiltros').innerHTML = filtrosHtml(FILTROS.entrega, true, 'Buscar por legajo o nombre…');
+    wireFiltrosBar($('pendFiltros'), FILTROS.entrega, renderPendCards);
+    renderPendCards();
+  }
+
+  function renderPendCards() {
+    if (!entregaPend || !entregaPend.personas) return;
+    var f = FILTROS.entrega;
+    var personas = entregaPend.personas.filter(function (per) {
+      if (f.prenda && !per.items.some(function (it) { return String(it.prenda) === f.prenda; })) return false;
+      return coincideBusqueda(f.q, [per.legajo, per.nombre]);
+    });
+    var cont = $('pendCards'); if (!cont) return;
+    if (!personas.length) { cont.innerHTML = vacio('Nada coincide con el filtro.'); return; }
+    var cards = personas.map(function (per) {
       var motivoDef = per.items.every(function (it) { return it.estado === 'SIN DATO'; }) ? 'CICLO INICIAL' : 'CICLO';
       var items = per.items.map(function (it) {
         return '<div class="item-prenda" data-prenda="' + it.prenda + '">' +
@@ -806,9 +880,9 @@
         '<button class="btn btn-primary btn-block pConf">Confirmar entrega</button>' +
       '</div>';
     }).join('');
-    $('pendBody').innerHTML = enc + '<div class="cards-grid">' + cards + '</div>';
+    cont.innerHTML = '<div class="cards-grid">' + cards + '</div>';
 
-    Array.prototype.forEach.call($('pendBody').querySelectorAll('.pend-card'), function (card) {
+    Array.prototype.forEach.call(cont.querySelectorAll('.pend-card'), function (card) {
       Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
         var chk = row.querySelector('.pInc');
         chk.addEventListener('change', function () { row.classList.toggle('off', !chk.checked); });
@@ -970,22 +1044,43 @@
       ? '<div class="fila-botones"><button id="cLimpiar" class="btn btn-ghost">Limpiar exclusiones (' + nExcl + ')</button></div>'
       : '';
 
+    comprarFilas = v.filas || [];
+    comprarEditable = esAhora;
+
     $('comprarBody').innerHTML =
       '<p class="seccion-sub">' + sub + '</p>' +
       chipsResumen(v.resumen || {}) +
       '<div class="card">' +
         '<div class="card-tit">Quiénes y qué</div>' +
         '<p class="muted">' + aviso + '</p>' +
-        tablaFilas(v.filas, esAhora) + limpiar +
+        '<div id="comprarFiltros"></div>' +
+        '<div id="comprarTabla"></div>' + limpiar +
       '</div>' +
       '<div id="pedidoPane" class="pedido-pane">' + pedidoPaneHtml(v.pedido, v.horizonte) + '</div>';
 
+    $('comprarFiltros').innerHTML = filtrosHtml(FILTROS.comprar, true, 'Buscar por legajo, nombre o centro…');
+    wireFiltrosBar($('comprarFiltros'), FILTROS.comprar, renderComprarTabla);
+    renderComprarTabla();
+
     if (esAhora) {
-      wireFilas();
       var lim = $('cLimpiar');
       if (lim) lim.addEventListener('click', function () { S.exclusiones = {}; cargarComprar(); });
     }
     wirePedidoPane(v.pedido, v.horizonte);
+  }
+
+  var comprarFilas = [], comprarEditable = true;
+  function renderComprarTabla() {
+    var f = FILTROS.comprar;
+    var list = comprarFilas.filter(function (r) {
+      if (f.prenda && String(r.prenda) !== f.prenda) return false;
+      return coincideBusqueda(f.q, [r.legajo, r.nombre, r.centro]);
+    });
+    var cont = $('comprarTabla'); if (!cont) return;
+    cont.innerHTML = list.length
+      ? tablaFilas(list, comprarEditable)
+      : vacio(comprarFilas.length ? 'Nada coincide con el filtro.' : 'No hay prendas en este horizonte.');
+    if (comprarEditable) wireFilas();
   }
 
   function tablaFilas(filas, editable) {
@@ -1272,26 +1367,39 @@
   }
 
   /* ---------- Historial ---------- */
+  var historialLista = [];
   RENDER.historial = function () {
-    $('vista').innerHTML = '<h2 class="seccion-tit">Historial de compras</h2>' +
-      '<p class="seccion-sub">Compras congeladas. Cada fila es una corrida cerrada.</p>' + cargando();
+    $('vista').innerHTML = encabezadoHist() + cargando();
     api('listarHistorial').then(function (lista) {
-      if (!lista.length) { $('vista').innerHTML = encabezadoHist() + vacio('Todavía no congelaste ninguna compra.'); return; }
-      var rows = lista.map(function (h) {
-        return '<tr data-id="' + esc(h.id) + '" class="hist-row" style="cursor:pointer">' +
-          '<td>' + esc(h.id) + '</td><td>' + esc(h.fechaCorrida) + '</td><td>' + esc(h.fechaCongelado) + '</td>' +
-          '<td>' + esc(h.usuario) + '</td>' +
-          '<td class="num">' + h.totalUnidades + '</td>' +
-          '<td>' + esc(h.proveedorGanador || '—') + '</td>' +
-          '<td class="num">' + money(h.costoGanador) + '</td></tr>';
-      }).join('');
+      historialLista = lista || [];
+      if (!historialLista.length) { $('vista').innerHTML = encabezadoHist() + vacio('Todavía no congelaste ninguna compra.'); return; }
       $('vista').innerHTML = encabezadoHist() +
-        tabla(['ID', 'Corrida', 'Congelado', 'Usuario', 'Unid.', 'Ganador', 'Costo'], rows);
-      Array.prototype.forEach.call($('vista').querySelectorAll('.hist-row'), function (tr) {
-        tr.addEventListener('click', function () { verDetalleHist(tr.getAttribute('data-id')); });
-      });
+        '<div id="histFiltros"></div>' +
+        '<div id="histLista"></div>';
+      $('histFiltros').innerHTML = filtrosHtml(FILTROS.historial, false, 'Buscar por ID, proveedor, fecha o usuario…');
+      wireFiltrosBar($('histFiltros'), FILTROS.historial, renderHistorialLista);
+      renderHistorialLista();
     }).catch(manejar);
   };
+  function renderHistorialLista() {
+    var list = historialLista.filter(function (h) {
+      return coincideBusqueda(FILTROS.historial.q, [h.id, h.proveedorGanador, h.fechaCorrida, h.fechaCongelado, h.usuario]);
+    });
+    var cont = $('histLista'); if (!cont) return;
+    if (!list.length) { cont.innerHTML = vacio('Nada coincide con el filtro.'); return; }
+    var rows = list.map(function (h) {
+      return '<tr data-id="' + esc(h.id) + '" class="hist-row" style="cursor:pointer">' +
+        '<td>' + esc(h.id) + '</td><td>' + esc(h.fechaCorrida) + '</td><td>' + esc(h.fechaCongelado) + '</td>' +
+        '<td>' + esc(h.usuario) + '</td>' +
+        '<td class="num">' + h.totalUnidades + '</td>' +
+        '<td>' + esc(h.proveedorGanador || '—') + '</td>' +
+        '<td class="num">' + money(h.costoGanador) + '</td></tr>';
+    }).join('');
+    cont.innerHTML = tabla(['ID', 'Corrida', 'Congelado', 'Usuario', 'Unid.', 'Ganador', 'Costo'], rows);
+    Array.prototype.forEach.call(cont.querySelectorAll('.hist-row'), function (tr) {
+      tr.addEventListener('click', function () { verDetalleHist(tr.getAttribute('data-id')); });
+    });
+  }
   function encabezadoHist() {
     return '<h2 class="seccion-tit">Historial de compras</h2>' +
       '<p class="seccion-sub">Compras congeladas. Tocá una fila para ver el detalle.</p>';
@@ -1339,27 +1447,46 @@
           '<td class="num">' + x.total + '</td><td class="num">' + x.tempranas + '</td><td class="num">' + x.tardias + '</td>' +
           '<td class="num">' + x.PANTALON + '/' + x.CAMISA + '/' + x.BOTIN + '</td></tr>';
       }).join('');
-      var eventos = rep.eventos.map(function (e) {
-        return '<tr class="' + (e.temprana ? 'row-critico' : '') + '"><td>' + esc(e.fecha) + '</td>' +
-          '<td>' + esc(e.legajo) + '</td><td>' + esc(e.nombre || '') + '</td><td>' + esc(e.prenda) + '</td>' +
-          '<td class="num">' + (e.edadMeses === null ? '—' : e.edadMeses) + '</td>' +
-          '<td>' + (e.edadMeses === null ? '<span class="badge sindato">s/ref</span>'
-            : (e.tardia ? '<span class="badge tag">tardía</span>' : '<span class="badge critico">temprana</span>')) + '</td>' +
-          '<td class="muted">' + esc(e.observaciones || '') + '</td></tr>';
-      }).join('');
+      roturasEventos = rep.eventos || [];
 
       $('vista').innerHTML = '<h2 class="seccion-tit">Reporte de roturas</h2>' +
         '<p class="seccion-sub">Roturas registradas y su antigüedad al romperse.</p>' + chips +
-        (rep.eventos.length ? (
+        (roturasEventos.length ? (
           '<div class="card"><div class="card-tit">Por operario</div>' +
             tabla(['Legajo', 'Nombre', 'Centro', 'Total', 'Tempr.', 'Tard.', 'P/C/B'], porLeg) + '</div>' +
           '<div class="card"><div class="card-tit">Por centro de costo</div>' +
             tabla(['Centro', 'Total', 'Tempr.', 'Tard.', 'P/C/B'], porCen) + '</div>' +
           '<div class="card"><div class="card-tit">Detalle de roturas</div>' +
-            tabla(['Fecha', 'Legajo', 'Nombre', 'Prenda', 'Edad (m)', 'Tipo', 'Obs.'], eventos) + '</div>'
+            '<div id="rotFiltros"></div><div id="rotDetalle"></div></div>'
         ) : vacio('No hay roturas registradas (motivo ROTURA en entregas).'));
+
+      if (roturasEventos.length) {
+        $('rotFiltros').innerHTML = filtrosHtml(FILTROS.roturas, true, 'Buscar por legajo, nombre u observación…');
+        wireFiltrosBar($('rotFiltros'), FILTROS.roturas, renderRoturasDetalle);
+        renderRoturasDetalle();
+      }
     }).catch(manejar);
   };
+
+  var roturasEventos = [];
+  function renderRoturasDetalle() {
+    var f = FILTROS.roturas;
+    var list = roturasEventos.filter(function (e) {
+      if (f.prenda && String(e.prenda) !== f.prenda) return false;
+      return coincideBusqueda(f.q, [e.legajo, e.nombre, e.observaciones]);
+    });
+    var cont = $('rotDetalle'); if (!cont) return;
+    if (!list.length) { cont.innerHTML = vacio('Nada coincide con el filtro.'); return; }
+    var eventos = list.map(function (e) {
+      return '<tr class="' + (e.temprana ? 'row-critico' : '') + '"><td>' + esc(e.fecha) + '</td>' +
+        '<td>' + esc(e.legajo) + '</td><td>' + esc(e.nombre || '') + '</td><td>' + esc(e.prenda) + '</td>' +
+        '<td class="num">' + (e.edadMeses === null ? '—' : e.edadMeses) + '</td>' +
+        '<td>' + (e.edadMeses === null ? '<span class="badge sindato">s/ref</span>'
+          : (e.tardia ? '<span class="badge tag">tardía</span>' : '<span class="badge critico">temprana</span>')) + '</td>' +
+        '<td class="muted">' + esc(e.observaciones || '') + '</td></tr>';
+    }).join('');
+    cont.innerHTML = tabla(['Fecha', 'Legajo', 'Nombre', 'Prenda', 'Edad (m)', 'Tipo', 'Obs.'], eventos);
+  }
 
   /* ---------- Personal ---------- */
   RENDER.personal = function () {
@@ -1394,13 +1521,15 @@
     var sinTalleIni = !!S.personalSoloSinTalle;
     S.personalSoloSinTalle = false; // one-shot: si vino del tablero, se consume acá
     $('perBody').innerHTML =
+      '<div class="filtros"><input type="search" id="pBuscar" class="filtro-q" placeholder="Buscar por legajo, nombre, categoría o centro…" value="' + esc(FILTROS.personal.q) + '"></div>' +
       '<div class="fila-botones"><button id="pNuevo" class="btn btn-primary">+ Nuevo operario</button>' +
         '<label class="inline"><input type="checkbox" id="pSoloAct"> Ver solo activos</label>' +
         '<label class="inline"><input type="checkbox" id="pSinTalle"' + (sinTalleIni ? ' checked' : '') + '> Solo sin talle</label></div>' +
       '<div id="pLista">' + cargando() + '</div>';
     $('pNuevo').addEventListener('click', function () { formOperario(null); });
     $('pSoloAct').addEventListener('change', cargarPersonal);
-    $('pSinTalle').addEventListener('change', cargarPersonal);
+    $('pSinTalle').addEventListener('change', renderPersonalLista);
+    $('pBuscar').addEventListener('input', function () { FILTROS.personal.q = $('pBuscar').value; renderPersonalLista(); });
     cargarPersonal();
   }
   function leFaltaTalle(o) {
@@ -1412,52 +1541,60 @@
     var s = String(v == null ? '' : v).trim();
     return s ? esc(s) : '<span class="falta-talle">—</span>';
   }
+  var personalLista = [];
   function cargarPersonal() {
     var soloActivos = $('pSoloAct') && $('pSoloAct').checked;
-    var soloSinTalle = $('pSinTalle') && $('pSinTalle').checked;
     api('listarPersonal', { soloActivos: soloActivos }).then(function (lista) {
+      personalLista = lista || [];
       // Mapa completo para la edición rápida (antes de filtrar lo que se muestra).
       S._personal = {};
-      lista.forEach(function (o) { S._personal[String(o['LEGAJO'])] = o; });
-
-      var visibles = soloSinTalle ? lista.filter(leFaltaTalle) : lista;
-      if (!visibles.length) {
-        $('pLista').innerHTML = vacio(soloSinTalle ? '👌 Nadie sin talle con este filtro.' : 'No hay operarios.');
-        return;
-      }
-      var rows = visibles.map(function (o) {
-        var leg = o['LEGAJO'];
-        var activo = /^s[ií]$|^true$|^x$|^1$/i.test(String(o['ACTIVO']).trim());
-        return '<tr>' +
-          '<td>' + esc(leg) + '</td>' +
-          '<td>' + esc(o['APELLIDO Y NOMBRE']) + '</td>' +
-          '<td>' + esc(o['CATEGORÍA'] || '') + '</td>' +
-          '<td>' + esc(o['CENTRO DE COSTO'] || '') + '</td>' +
-          '<td>' + esc(o['COLOR ROPA'] || '') + '</td>' +
-          '<td class="muted">' + celdaTalle(o['TALLE PANT']) + ' / ' + celdaTalle(o['TALLE CAM']) + ' / ' + celdaTalle(o['TALLE BOTÍN']) + '</td>' +
-          '<td>' + (activo ? '<span class="badge elegible">activo</span>' : '<span class="badge sindato">inactivo</span>') + '</td>' +
-          '<td><button class="btn btn-sm btn-ghost pEdit" data-legajo="' + esc(leg) + '">Editar</button> ' +
-            '<button class="btn btn-sm pToggle" data-legajo="' + esc(leg) + '" data-activo="' + (activo ? '1' : '0') + '">' +
-              (activo ? 'Baja' : 'Alta') + '</button></td>' +
-        '</tr>';
-      }).join('');
-      $('pLista').innerHTML =
-        '<p class="muted">' + visibles.length + ' operario(s)' + (soloSinTalle ? ' sin talle completo' : '') + '.</p>' +
-        tabla(['Legajo', 'Nombre', 'Categoría', 'Centro', 'Color', 'Talles P/C/B', 'Estado', ''], rows);
-
-      Array.prototype.forEach.call($('pLista').querySelectorAll('.pEdit'), function (b) {
-        b.addEventListener('click', function () { formOperario(S._personal[b.getAttribute('data-legajo')]); });
-      });
-      Array.prototype.forEach.call($('pLista').querySelectorAll('.pToggle'), function (b) {
-        b.addEventListener('click', function () {
-          var activar = b.getAttribute('data-activo') !== '1';
-          api('setActivoOperario', { legajo: b.getAttribute('data-legajo'), activo: activar }).then(function () {
-            toast(activar ? 'Reactivado.' : 'Dado de baja.', 'ok');
-            cargarPersonal();
-          }).catch(manejar);
-        });
-      });
+      personalLista.forEach(function (o) { S._personal[String(o['LEGAJO'])] = o; });
+      renderPersonalLista();
     }).catch(function (e) { $('pLista').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
+  }
+  function renderPersonalLista() {
+    var soloSinTalle = $('pSinTalle') && $('pSinTalle').checked;
+    var q = FILTROS.personal.q;
+    var visibles = personalLista.filter(function (o) {
+      if (soloSinTalle && !leFaltaTalle(o)) return false;
+      return coincideBusqueda(q, [o['LEGAJO'], o['APELLIDO Y NOMBRE'], o['CATEGORÍA'], o['CENTRO DE COSTO']]);
+    });
+    if (!visibles.length) {
+      $('pLista').innerHTML = vacio((soloSinTalle || (q && q.trim())) ? 'Nada coincide con el filtro.' : 'No hay operarios.');
+      return;
+    }
+    var rows = visibles.map(function (o) {
+      var leg = o['LEGAJO'];
+      var activo = /^s[ií]$|^true$|^x$|^1$/i.test(String(o['ACTIVO']).trim());
+      return '<tr>' +
+        '<td>' + esc(leg) + '</td>' +
+        '<td>' + esc(o['APELLIDO Y NOMBRE']) + '</td>' +
+        '<td>' + esc(o['CATEGORÍA'] || '') + '</td>' +
+        '<td>' + esc(o['CENTRO DE COSTO'] || '') + '</td>' +
+        '<td>' + esc(o['COLOR ROPA'] || '') + '</td>' +
+        '<td class="muted">' + celdaTalle(o['TALLE PANT']) + ' / ' + celdaTalle(o['TALLE CAM']) + ' / ' + celdaTalle(o['TALLE BOTÍN']) + '</td>' +
+        '<td>' + (activo ? '<span class="badge elegible">activo</span>' : '<span class="badge sindato">inactivo</span>') + '</td>' +
+        '<td><button class="btn btn-sm btn-ghost pEdit" data-legajo="' + esc(leg) + '">Editar</button> ' +
+          '<button class="btn btn-sm pToggle" data-legajo="' + esc(leg) + '" data-activo="' + (activo ? '1' : '0') + '">' +
+            (activo ? 'Baja' : 'Alta') + '</button></td>' +
+      '</tr>';
+    }).join('');
+    $('pLista').innerHTML =
+      '<p class="muted">' + visibles.length + ' operario(s)' + (soloSinTalle ? ' sin talle completo' : '') + '.</p>' +
+      tabla(['Legajo', 'Nombre', 'Categoría', 'Centro', 'Color', 'Talles P/C/B', 'Estado', ''], rows);
+
+    Array.prototype.forEach.call($('pLista').querySelectorAll('.pEdit'), function (b) {
+      b.addEventListener('click', function () { formOperario(S._personal[b.getAttribute('data-legajo')]); });
+    });
+    Array.prototype.forEach.call($('pLista').querySelectorAll('.pToggle'), function (b) {
+      b.addEventListener('click', function () {
+        var activar = b.getAttribute('data-activo') !== '1';
+        api('setActivoOperario', { legajo: b.getAttribute('data-legajo'), activo: activar }).then(function () {
+          toast(activar ? 'Reactivado.' : 'Dado de baja.', 'ok');
+          cargarPersonal();
+        }).catch(manejar);
+      });
+    });
   }
 
   function lst(key) { return (S.listas && S.listas[key]) || []; }
