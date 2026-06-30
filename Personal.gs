@@ -21,11 +21,23 @@ function leerPersonal_() {
   return data;
 }
 
-/** Operarios, opcionalmente solo activos. Devuelve objetos planos. */
+/**
+ * Operarios, opcionalmente solo activos. Devuelve objetos planos, con la última
+ * fecha de entrega de cualquier prenda en ULTIMA_ENTREGA ('' si nunca recibió).
+ */
 function listarPersonal_(soloActivos) {
   var data = leerPersonal_();
+  var ult = ultimaEntregaPorPrenda_();
   return data.filas.filter(function (f) {
     return soloActivos ? esSi_(f[P.ACTIVO]) : true;
+  }).map(function (f) {
+    var m = ult[claveLegajo_(f[P.LEGAJO])];
+    var max = null;
+    if (m) PRENDAS.forEach(function (pr) {
+      if (m[pr] && (!max || m[pr].getTime() > max.getTime())) max = m[pr];
+    });
+    f.ULTIMA_ENTREGA = max ? fmtFecha_(max) : '';
+    return f;
   });
 }
 

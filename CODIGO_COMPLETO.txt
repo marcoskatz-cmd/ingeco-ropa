@@ -770,11 +770,23 @@ function leerPersonal_() {
   return data;
 }
 
-/** Operarios, opcionalmente solo activos. Devuelve objetos planos. */
+/**
+ * Operarios, opcionalmente solo activos. Devuelve objetos planos, con la última
+ * fecha de entrega de cualquier prenda en ULTIMA_ENTREGA ('' si nunca recibió).
+ */
 function listarPersonal_(soloActivos) {
   var data = leerPersonal_();
+  var ult = ultimaEntregaPorPrenda_();
   return data.filas.filter(function (f) {
     return soloActivos ? esSi_(f[P.ACTIVO]) : true;
+  }).map(function (f) {
+    var m = ult[claveLegajo_(f[P.LEGAJO])];
+    var max = null;
+    if (m) PRENDAS.forEach(function (pr) {
+      if (m[pr] && (!max || m[pr].getTime() > max.getTime())) max = m[pr];
+    });
+    f.ULTIMA_ENTREGA = max ? fmtFecha_(max) : '';
+    return f;
   });
 }
 
@@ -1012,6 +1024,53 @@ function entregadasDesde_(desde) {
 function confirmarEntregas_(datos) {
   var entrega = registrarEntrega_(datos);
   return { ok: true, entrega: entrega, pendientes: entregasPendientes_() };
+}
+
+/* ===================== Historial por operario ===================== */
+
+/**
+ * Historial de entregas de UN operario: todas sus filas de ENTREGAS de la más
+ * nueva a la más vieja, más la última fecha por prenda. Solo lectura.
+ * Sirve para responder "qué se le dio a esta persona y cuándo".
+ */
+function historialOperario_(legajo) {
+  var clave = claveLegajo_(legajo);
+  if (!clave) throw new Error('Legajo vacío.');
+  var op = buscarOperario_(legajo);
+  var data = leerEntregas_();
+  var propias = data.filas.filter(function (f) { return claveLegajo_(f[E.LEGAJO]) === clave; });
+  propias.sort(function (a, b) {
+    var ta = a._fecha ? a._fecha.getTime() : 0, tb = b._fecha ? b._fecha.getTime() : 0;
+    return tb - ta; // más nueva primero
+  });
+
+  var ultima = { PANTALON: null, CAMISA: null, BOTIN: null };
+  propias.forEach(function (f) {
+    var pr = String(f[E.PRENDA] || '').toUpperCase();
+    if (PRENDAS.indexOf(pr) < 0 || !f._fecha) return;
+    if (!ultima[pr] || f._fecha.getTime() > ultima[pr].getTime()) ultima[pr] = f._fecha;
+  });
+
+  var entregas = propias.map(function (f) {
+    return {
+      fecha: f._fecha ? fmtFecha_(f._fecha) : String(f[E.FECHA] || ''),
+      prenda: f[E.PRENDA] || '',
+      talle: f[E.TALLE] || '',
+      motivo: f[E.MOTIVO] || '',
+      observaciones: f[E.OBS] || ''
+    };
+  });
+
+  return {
+    legajo: op ? op[P.LEGAJO] : legajo,
+    nombre: op ? op[P.NOMBRE] : (propias[0] ? propias[0][E.NOMBRE] : ''),
+    ultimaPorPrenda: {
+      PANTALON: ultima.PANTALON ? fmtFecha_(ultima.PANTALON) : null,
+      CAMISA: ultima.CAMISA ? fmtFecha_(ultima.CAMISA) : null,
+      BOTIN: ultima.BOTIN ? fmtFecha_(ultima.BOTIN) : null
+    },
+    entregas: entregas
+  };
 }
 
 /* ================================================================
@@ -1927,6 +1986,7 @@ function enrutar_(metodo, p, sesion) {
     case 'registrarEntrega': return registrarEntrega_(p.datos || p);
     case 'entregasPendientes': return entregasPendientes_();
     case 'confirmarEntregas': return confirmarEntregas_(p.datos || p);
+    case 'historialOperario': return historialOperario_(p.legajo);
 
     // --- Comprar (corrida + previsión + pedido, unificado) ---
     case 'vistaComprar': return vistaComprar_(p.horizonte, p.exclusiones || []);

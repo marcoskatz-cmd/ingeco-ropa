@@ -719,6 +719,7 @@
       seccionAyuda('👥 Personal',
         'El padrón de operarios. Acá se cargan los talles, que son la llave de todo (sin talle no se compra).',
         ['<b>+ Nuevo operario</b>: alta manual. <b>Editar</b>: cambiar datos o talles.',
+         '<b>“Entregas”</b>: abre el historial de ese operario — qué prenda se le entregó, cuándo, talle y motivo. La columna <b>Última entrega</b> muestra la fecha más reciente.',
          '<b>Baja</b> desactiva al operario (no lo borra: conserva su historial y talles). <b>Alta</b> lo reactiva.',
          'Filtros: <b>“Ver solo activos”</b> y <b>“Solo sin talle”</b>.',
          'Pestaña <b>“Cruce con RRHH”</b>: pegás el listado oficial (legajo, nombre, categoría) y el sistema compara por legajo y sugiere altas y bajas. Vos confirmás una por una.']) +
@@ -1573,16 +1574,21 @@
         '<td>' + esc(o['CENTRO DE COSTO'] || '') + '</td>' +
         '<td>' + esc(o['COLOR ROPA'] || '') + '</td>' +
         '<td class="muted">' + celdaTalle(o['TALLE PANT']) + ' / ' + celdaTalle(o['TALLE CAM']) + ' / ' + celdaTalle(o['TALLE BOTÍN']) + '</td>' +
+        '<td>' + (o['ULTIMA_ENTREGA'] ? esc(o['ULTIMA_ENTREGA']) : '<span class="muted">—</span>') + '</td>' +
         '<td>' + (activo ? '<span class="badge elegible">activo</span>' : '<span class="badge sindato">inactivo</span>') + '</td>' +
-        '<td><button class="btn btn-sm btn-ghost pEdit" data-legajo="' + esc(leg) + '">Editar</button> ' +
+        '<td><button class="btn btn-sm btn-ghost pEnt" data-legajo="' + esc(leg) + '">Entregas</button> ' +
+          '<button class="btn btn-sm btn-ghost pEdit" data-legajo="' + esc(leg) + '">Editar</button> ' +
           '<button class="btn btn-sm pToggle" data-legajo="' + esc(leg) + '" data-activo="' + (activo ? '1' : '0') + '">' +
             (activo ? 'Baja' : 'Alta') + '</button></td>' +
       '</tr>';
     }).join('');
     $('pLista').innerHTML =
       '<p class="muted">' + visibles.length + ' operario(s)' + (soloSinTalle ? ' sin talle completo' : '') + '.</p>' +
-      tabla(['Legajo', 'Nombre', 'Categoría', 'Centro', 'Color', 'Talles P/C/B', 'Estado', ''], rows);
+      tabla(['Legajo', 'Nombre', 'Categoría', 'Centro', 'Color', 'Talles P/C/B', 'Última entrega', 'Estado', ''], rows);
 
+    Array.prototype.forEach.call($('pLista').querySelectorAll('.pEnt'), function (b) {
+      b.addEventListener('click', function () { verEntregasOperario(b.getAttribute('data-legajo')); });
+    });
     Array.prototype.forEach.call($('pLista').querySelectorAll('.pEdit'), function (b) {
       b.addEventListener('click', function () { formOperario(S._personal[b.getAttribute('data-legajo')]); });
     });
@@ -1595,6 +1601,40 @@
         }).catch(manejar);
       });
     });
+  }
+
+  function badgeMotivo(m) {
+    var s = String(m || '').toUpperCase();
+    if (s === 'ROTURA') return '<span class="badge critico">ROTURA</span>';
+    if (s === 'CICLO INICIAL') return '<span class="badge sindato">CICLO INICIAL</span>';
+    return '<span class="badge tag">' + esc(s || 'CICLO') + '</span>';
+  }
+
+  /** Modal con el historial de entregas de un operario (qué/cuándo/talle/motivo). */
+  function verEntregasOperario(legajo) {
+    abrirModal('Entregas', cargando());
+    api('historialOperario', { legajo: legajo }).then(function (h) {
+      var u = h.ultimaPorPrenda || {};
+      var resumen = '<p class="muted" style="margin-top:0">Última entrega por prenda — ' +
+        'Pantalón: <b>' + esc(u.PANTALON || 'sin dato') + '</b> · ' +
+        'Camisa: <b>' + esc(u.CAMISA || 'sin dato') + '</b> · ' +
+        'Botín: <b>' + esc(u.BOTIN || 'sin dato') + '</b></p>';
+      var cuerpo;
+      if (!h.entregas || !h.entregas.length) {
+        cuerpo = vacio('Este operario todavía no tiene entregas registradas.');
+      } else {
+        var rows = h.entregas.map(function (e) {
+          return '<tr><td>' + esc(e.fecha) + '</td><td>' + esc(e.prenda) + '</td>' +
+            '<td>' + esc(e.talle || '—') + '</td>' +
+            '<td>' + badgeMotivo(e.motivo) + '</td>' +
+            '<td class="muted">' + esc(e.observaciones || '') + '</td></tr>';
+        }).join('');
+        cuerpo = '<p class="muted"><b>' + h.entregas.length + '</b> entrega(s), de la más nueva a la más vieja.</p>' +
+          tabla(['Fecha', 'Prenda', 'Talle', 'Motivo', 'Obs.'], rows);
+      }
+      $('modalTitulo').textContent = 'Entregas de ' + (h.nombre || '') + ' · legajo ' + (h.legajo || legajo);
+      $('modalCuerpo').innerHTML = resumen + cuerpo;
+    }).catch(function (e) { $('modalCuerpo').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
   }
 
   function lst(key) { return (S.listas && S.listas[key]) || []; }
