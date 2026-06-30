@@ -712,7 +712,8 @@
       seccionAyuda('📦 Entregar',
         'Dos formas de registrar entregas.',
         ['<b>Pendientes de la última compra</b> (arriba): lo que compraste y todavía no entregaste, agrupado por persona. ' +
-           'Revisás talle, fecha y motivo, destildás lo que no entregás y tocás <b>“Confirmar entrega”</b>. Eso reinicia el reloj de esa prenda.',
+           'Revisás talle, fecha y motivo, destildás lo que no entregás y tocás <b>“Confirmar”</b>. Lo entregado reinicia el reloj de esa prenda.',
+         'Si <b>destildás</b> una prenda aparece una casilla para anotar <b>por qué no se entregó</b> (ej.: no había talle, faltó stock). Queda guardado: la próxima vez se ve el último motivo en la tarjeta, y también en <b>Personal → Entregas</b>.',
          '<b>Entrega suelta</b> (abajo): por fuera de la compra, para una rotura o reposición puntual. ' +
            'Buscás el legajo, elegís prendas y motivo (normalmente <b>ROTURA</b>) y registrás. No edita los talles del padrón.']) +
 
@@ -873,12 +874,17 @@
       }).join('');
       return '<div class="card pend-card" data-legajo="' + esc(per.legajo) + '">' +
         '<div style="margin-bottom:8px"><b>' + esc(per.nombre || '(sin nombre)') + '</b> · legajo ' + esc(per.legajo) + '</div>' +
+        (per.notaNoEntrega && per.notaNoEntrega.comentario
+          ? '<p class="muted" style="margin:-2px 0 8px">📝 Último motivo de no-entrega (' + esc(per.notaNoEntrega.fecha) + '): ' + esc(per.notaNoEntrega.comentario) + '</p>'
+          : '') +
         items +
+        '<div class="no-ent-wrap oculto"><label class="campo"><span>Motivo de lo que no se entrega</span>' +
+          '<textarea class="pNoEnt" style="min-height:54px" placeholder="Ej.: no había talle, faltó stock, el operario estaba ausente…"></textarea></label></div>' +
         '<div class="grid2">' +
           '<label class="campo"><span>Fecha</span><input type="date" class="pFecha" value="' + hoyInput() + '"></label>' +
           '<label class="campo"><span>Motivo</span><select class="pMotivo">' + motivosOpts(motivoDef) + '</select></label>' +
         '</div>' +
-        '<button class="btn btn-primary btn-block pConf">Confirmar entrega</button>' +
+        '<button class="btn btn-primary btn-block pConf">Confirmar</button>' +
       '</div>';
     }).join('');
     cont.innerHTML = '<div class="cards-grid">' + cards + '</div>';
@@ -886,29 +892,54 @@
     Array.prototype.forEach.call(cont.querySelectorAll('.pend-card'), function (card) {
       Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
         var chk = row.querySelector('.pInc');
-        chk.addEventListener('change', function () { row.classList.toggle('off', !chk.checked); });
+        chk.addEventListener('change', function () { row.classList.toggle('off', !chk.checked); actualizarNoEnt(card); });
       });
+      actualizarNoEnt(card);
       card.querySelector('.pConf').addEventListener('click', function () { confirmarPersona(card); });
     });
   }
 
+  /** Muestra la casilla de motivo solo si hay alguna prenda destildada (no se entrega). */
+  function actualizarNoEnt(card) {
+    var hayNoEnt = Array.prototype.some.call(card.querySelectorAll('.item-prenda .pInc'),
+      function (c) { return !c.checked; });
+    var wrap = card.querySelector('.no-ent-wrap');
+    if (wrap) wrap.classList.toggle('oculto', !hayNoEnt);
+  }
+
   function confirmarPersona(card) {
-    var items = [];
+    var items = [], noEntregadas = [];
     Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
-      if (!row.querySelector('.pInc').checked) return;
-      items.push({ prenda: row.getAttribute('data-prenda'), talle: row.querySelector('.pTalle').value.trim() });
+      var pr = row.getAttribute('data-prenda');
+      if (row.querySelector('.pInc').checked) {
+        items.push({ prenda: pr, talle: row.querySelector('.pTalle').value.trim() });
+      } else {
+        noEntregadas.push(pr);
+      }
     });
-    if (!items.length) { toast('Elegí al menos una prenda.', 'err'); return; }
+    var ta = card.querySelector('.pNoEnt');
+    var comentario = ta ? ta.value.trim() : '';
+    if (!items.length && !comentario) {
+      toast('Elegí al menos una prenda, o escribí el motivo de por qué no se entrega.', 'err');
+      return;
+    }
     var datos = {
       legajo: card.getAttribute('data-legajo'),
       fecha: inputAFecha(card.querySelector('.pFecha').value),
       motivo: card.querySelector('.pMotivo').value,
       items: items
     };
+    if (comentario && noEntregadas.length) {
+      datos.noEntrega = { prendas: noEntregadas, comentario: comentario };
+    }
     var btn = card.querySelector('.pConf');
     btn.disabled = true;
     api('confirmarEntregas', { datos: datos }).then(function (r) {
-      toast('Entrega registrada: ' + r.entrega.prendas.join(', ') + ' (' + r.entrega.fecha + ').', 'ok');
+      var msg = r.entrega
+        ? ('Entrega registrada: ' + r.entrega.prendas.join(', ') + ' (' + r.entrega.fecha + ').' +
+            (datos.noEntrega ? ' Motivo guardado.' : ''))
+        : 'Motivo de no-entrega guardado.';
+      toast(msg, 'ok');
       pintarPendientes(r.pendientes);
     }).catch(function (e) { btn.disabled = false; manejar(e); });
   }
@@ -1632,8 +1663,17 @@
         cuerpo = '<p class="muted"><b>' + h.entregas.length + '</b> entrega(s), de la más nueva a la más vieja.</p>' +
           tabla(['Fecha', 'Prenda', 'Talle', 'Motivo', 'Obs.'], rows);
       }
+      var notas = '';
+      if (h.notasNoEntrega && h.notasNoEntrega.length) {
+        var nrows = h.notasNoEntrega.map(function (n) {
+          return '<tr><td>' + esc(n.fecha) + '</td><td>' + esc(n.prendas || '') + '</td>' +
+            '<td class="muted">' + esc(n.comentario || '') + '</td></tr>';
+        }).join('');
+        notas = '<h3 class="sub-tit" style="margin-top:18px">Motivos de no-entrega</h3>' +
+          tabla(['Fecha', 'Prendas', 'Motivo'], nrows);
+      }
       $('modalTitulo').textContent = 'Entregas de ' + (h.nombre || '') + ' · legajo ' + (h.legajo || legajo);
-      $('modalCuerpo').innerHTML = resumen + cuerpo;
+      $('modalCuerpo').innerHTML = resumen + cuerpo + notas;
     }).catch(function (e) { $('modalCuerpo').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
   }
 

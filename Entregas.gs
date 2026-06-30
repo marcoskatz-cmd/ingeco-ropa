@@ -98,6 +98,7 @@ function entregasPendientes_() {
 
   var fechaCongelado = aFecha_(ultima.FECHA_CONGELADO);
   var entregadas = entregadasDesde_(fechaCongelado);
+  var notas = notasNoEntregaPorLegajo_();
 
   // Agrupa pendientes por persona, conservando el orden de la corrida.
   var porLegajo = {}, orden = [];
@@ -107,7 +108,11 @@ function entregasPendientes_() {
     if (!leg || PRENDAS.indexOf(prenda) < 0) return;
     if (entregadas[leg + '|' + prenda]) return; // ya entregada desde el congelado
     if (!porLegajo[leg]) {
-      porLegajo[leg] = { legajo: f.legajo, nombre: f.nombre || '', items: [] };
+      var n = notas[leg];
+      porLegajo[leg] = {
+        legajo: f.legajo, nombre: f.nombre || '', items: [],
+        notaNoEntrega: n ? { fecha: n.fecha, comentario: n.comentario } : null
+      };
       orden.push(leg);
     }
     porLegajo[leg].items.push({
@@ -147,13 +152,82 @@ function entregadasDesde_(desde) {
 }
 
 /**
- * Confirma la entrega de un pendiente desde la lista de trabajo. Reusa
- * registrarEntrega_ (reinicia relojes igual que una entrega suelta) y devuelve
- * la lista de pendientes ya refrescada, para que el front no haga otra vuelta.
+ * Confirma una persona desde la lista de trabajo. Puede registrar entregas
+ * (reinicia relojes), y/o anotar un motivo de NO-entrega para lo que quedó sin
+ * dar. Cualquiera de las dos partes es opcional, pero al menos una debe venir.
+ * datos = { legajo, fecha, motivo, items:[...], noEntrega?:{ prendas:[...], comentario } }
  */
-function confirmarEntregas_(datos) {
-  var entrega = registrarEntrega_(datos);
-  return { ok: true, entrega: entrega, pendientes: entregasPendientes_() };
+function confirmarEntregas_(datos, usuario) {
+  datos = datos || {};
+  var hayItems = datos.items && datos.items.length;
+  var noEnt = datos.noEntrega || null;
+  var hayNota = noEnt && String(noEnt.comentario || '').trim();
+  if (!hayItems && !hayNota) {
+    throw new Error('Elegí al menos una prenda para entregar o escribí el motivo de no-entrega.');
+  }
+  var resultado = { ok: true };
+  if (hayItems) resultado.entrega = registrarEntrega_(datos);
+  if (hayNota) {
+    registrarNoEntrega_({
+      legajo: datos.legajo, fecha: datos.fecha,
+      prendas: noEnt.prendas || [], comentario: noEnt.comentario
+    }, usuario);
+  }
+  resultado.pendientes = entregasPendientes_();
+  return resultado;
+}
+
+/* ===================== No-entregas (motivos) ===================== */
+
+/** Crea la hoja NO_ENTREGAS con encabezados si todavía no existe. */
+function ensureNoEntregasSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName(SHEETS.NO_ENTREGAS);
+  if (!sh) {
+    sh = ss.insertSheet(SHEETS.NO_ENTREGAS);
+    sh.getRange(1, 1, 1, COLS.NO_ENTREGAS.length).setValues([COLS.NO_ENTREGAS]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** Registra un motivo de no-entrega (una nota por persona y pasada). Append-only. */
+function registrarNoEntrega_(datos, usuario) {
+  var op = buscarOperario_(datos.legajo);
+  var prendas = (datos.prendas || [])
+    .map(function (p) { return String(p || '').toUpperCase(); })
+    .filter(function (p) { return PRENDAS.indexOf(p) >= 0; });
+  ensureNoEntregasSheet_();
+  appendFilaPorHeader_(SHEETS.NO_ENTREGAS, {
+    'FECHA': aFecha_(datos.fecha) || hoy_(),
+    'LEGAJO': op ? op[P.LEGAJO] : datos.legajo,
+    'APELLIDO Y NOMBRE': op ? op[P.NOMBRE] : '',
+    'PRENDAS': prendas.join(', '),
+    'COMENTARIO': String(datos.comentario || '').trim(),
+    'USUARIO': usuario || ''
+  });
+  return { ok: true };
+}
+
+/** { claveLegajo: { fecha, comentario, prendas } } con la nota MÁS reciente por persona. */
+function notasNoEntregaPorLegajo_() {
+  var sh = getSheet_(SHEETS.NO_ENTREGAS);
+  if (!sh) return {};
+  var data = leerObjetos_(SHEETS.NO_ENTREGAS);
+  var mapa = {};
+  data.filas.forEach(function (f) {
+    var leg = claveLegajo_(f.LEGAJO);
+    if (!leg) return;
+    var fe = aFecha_(f.FECHA);
+    var nota = {
+      fecha: fe ? fmtFecha_(fe) : String(f.FECHA || ''),
+      _t: fe ? fe.getTime() : 0,
+      comentario: f.COMENTARIO || '',
+      prendas: f.PRENDAS || ''
+    };
+    if (!mapa[leg] || nota._t >= mapa[leg]._t) mapa[leg] = nota;
+  });
+  return mapa;
 }
 
 /* ===================== Historial por operario ===================== */
@@ -191,6 +265,19 @@ function historialOperario_(legajo) {
     };
   });
 
+  var notas = [];
+  if (getSheet_(SHEETS.NO_ENTREGAS)) {
+    leerObjetos_(SHEETS.NO_ENTREGAS).filas
+      .filter(function (f) { return claveLegajo_(f.LEGAJO) === clave; })
+      .forEach(function (f) {
+        var fe = aFecha_(f.FECHA);
+        notas.push({ _t: fe ? fe.getTime() : 0, fecha: fe ? fmtFecha_(fe) : String(f.FECHA || ''),
+          prendas: f.PRENDAS || '', comentario: f.COMENTARIO || '' });
+      });
+    notas.sort(function (a, b) { return b._t - a._t; });
+    notas = notas.map(function (n) { return { fecha: n.fecha, prendas: n.prendas, comentario: n.comentario }; });
+  }
+
   return {
     legajo: op ? op[P.LEGAJO] : legajo,
     nombre: op ? op[P.NOMBRE] : (propias[0] ? propias[0][E.NOMBRE] : ''),
@@ -199,6 +286,7 @@ function historialOperario_(legajo) {
       CAMISA: ultima.CAMISA ? fmtFecha_(ultima.CAMISA) : null,
       BOTIN: ultima.BOTIN ? fmtFecha_(ultima.BOTIN) : null
     },
-    entregas: entregas
+    entregas: entregas,
+    notasNoEntrega: notas
   };
 }

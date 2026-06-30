@@ -59,7 +59,7 @@ function enrutar_(metodo, p, sesion) {
     // --- Entregas ---
     case 'registrarEntrega': return registrarEntrega_(p.datos || p);
     case 'entregasPendientes': return entregasPendientes_();
-    case 'confirmarEntregas': return confirmarEntregas_(p.datos || p);
+    case 'confirmarEntregas': return confirmarEntregas_(p.datos || p, usuario);
     case 'historialOperario': return historialOperario_(p.legajo);
 
     // --- Comprar (corrida + previsión + pedido, unificado) ---
