@@ -4,11 +4,12 @@
  * Pega TODO esto en un unico archivo .gs del editor de Apps Script
  * (por ej. el "Codigo.gs" por defecto). Es el backend entero.
  *
- * Aparte van como archivos separados (no entran en un .gs):
- *   - 3 HTML: index, Estilos, App  (Archivo > Nuevo > HTML)
- *   - appsscript.json (manifiesto del proyecto)
+ * El front va aparte, en UN solo archivo HTML del editor:
+ *   - index.html  (Archivo > Nuevo > HTML, con nombre "index")
+ * Y el manifiesto del proyecto:
+ *   - appsscript.json
  *
- * Generado 2026-06-29.
+ * Generado 2026-06-30.
  * Orden: Config, Util, Schema, Setup, Auth, Personal, Entregas, Calculo, Corrida, Pedido, Proveedores, CruceRRHH, Historial, Roturas, Api, Main, Seed
  * ============================================================ */
 
@@ -29,7 +30,6 @@
 var SHEETS = {
   CONFIG: 'CONFIG',
   LISTAS: 'LISTAS',
-  USUARIOS: 'USUARIOS',
   PERSONAL: 'PERSONAL',
   ENTREGAS: 'ENTREGAS',
   PROVEEDORES: 'PROVEEDORES',
@@ -48,7 +48,8 @@ var PARAM = {
   CADENCIA: 'cadencia_meses',
   TECHO: 'techo_meses',
   FECHA_ANCLA: 'fecha_ancla_corrida',
-  DIAS_PREVISION: 'dias_prevision'
+  DIAS_PREVISION: 'dias_prevision',
+  PIN_HASH: 'pin_acceso_hash'
 };
 
 // Valores por defecto (los que siembra Setup; editables en CONFIG).
@@ -127,6 +128,31 @@ function getFechaAncla_() {
   return d;
 }
 
+/** Hash del PIN de acceso (formato salt$hash), o '' si todavía no se sembró. */
+function getPinHash_() {
+  var v = getConfigMap_()[PARAM.PIN_HASH];
+  return v ? String(v) : '';
+}
+
+/**
+ * Upsert de un parámetro en CONFIG (columnas PARAMETRO / VALOR). Si la clave
+ * existe reescribe su VALOR; si no, agrega una fila al final. Invalida la cache
+ * de execution para que la próxima lectura vea el valor nuevo.
+ */
+function escribirConfig_(clave, valor) {
+  var sh = requireSheet_(SHEETS.CONFIG);
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim() === clave) {
+      sh.getRange(i + 1, 2).setValue(valor);
+      invalidarCache_();
+      return;
+    }
+  }
+  sh.appendRow([clave, valor, '']);
+  invalidarCache_();
+}
+
 /* ----------------------------- LISTAS ----------------------------- */
 
 /**
@@ -155,9 +181,63 @@ function getListas_() {
   return listas;
 }
 
+/* ------------------- Escritura de parámetros / listas ------------------- */
+
+/**
+ * Guarda los parámetros de negocio editables en CONFIG. NO toca el techo
+ * (se recalcula con =B2+B3) ni el PIN (va por cambiarPinAcceso_).
+ * datos = { vidaUtil, cadencia, diasPrevision, fechaAncla }  (fechaAncla 'dd/mm/aaaa' o Date)
+ */
+function guardarParametros_(datos) {
+  datos = datos || {};
+  var vidaUtil = Math.round(Number(datos.vidaUtil));
+  var cadencia = Math.round(Number(datos.cadencia));
+  var diasPrev = Math.round(Number(datos.diasPrevision));
+  var fecha = aFecha_(datos.fechaAncla);
+
+  if (!isFinite(vidaUtil) || vidaUtil < 1) throw new Error('La vida útil debe ser un número de meses ≥ 1.');
+  if (!isFinite(cadencia) || cadencia < 1) throw new Error('La cadencia debe ser un número de meses ≥ 1.');
+  if (cadencia > vidaUtil) throw new Error('La cadencia no puede ser mayor que la vida útil.');
+  if (!isFinite(diasPrev) || diasPrev < 0) throw new Error('Los días de previsión deben ser un número ≥ 0.');
+  if (!fecha) throw new Error('La fecha ancla no es válida. Usá el formato dd/mm/aaaa.');
+
+  escribirConfig_(PARAM.VIDA_UTIL, vidaUtil);
+  escribirConfig_(PARAM.CADENCIA, cadencia);
+  escribirConfig_(PARAM.DIAS_PREVISION, diasPrev);
+  escribirConfig_(PARAM.FECHA_ANCLA, fecha);
+  return { ok: true };
+}
+
+/**
+ * Reescribe columnas de la hoja LISTAS. datos = { 'COLOR ROPA': [...], ... }.
+ * Solo toca las columnas presentes en datos (las ausentes quedan intactas).
+ * Cada columna se limpia y reescribe con valores trim, sin vacíos ni duplicados.
+ */
+function guardarListas_(datos) {
+  datos = datos || {};
+  var sh = requireSheet_(SHEETS.LISTAS);
+  var presentes = COLS.LISTAS.filter(function (h) {
+    return Object.prototype.hasOwnProperty.call(datos, h);
+  });
+  if (!presentes.length) throw new Error('No se recibió ninguna lista para guardar.');
+
+  var maxRows = Math.max(sh.getMaxRows() - 1, 1);
+  COLS.LISTAS.forEach(function (header, idx) {
+    if (!Object.prototype.hasOwnProperty.call(datos, header)) return; // no tocar
+    var vals = (datos[header] || [])
+      .map(function (v) { return String(v == null ? '' : v).trim(); })
+      .filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+    sh.getRange(2, idx + 1, maxRows, 1).clearContent();
+    if (vals.length) {
+      sh.getRange(2, idx + 1, vals.length, 1).setValues(vals.map(function (v) { return [v]; }));
+    }
+  });
+  invalidarCache_();
+  return { ok: true, columnas: presentes.length };
+}
+
 /** Invalida la cache de execution (tras escribir CONFIG/LISTAS). */
 function invalidarCache_() { _memo = {}; }
-
 
 /* ================================================================
    Util.gs
@@ -290,7 +370,6 @@ function esSi_(v) {
   return t === 'SI' || t === 'SÍ' || t === 'TRUE' || t === 'VERDADERO' || t === 'X' || t === '1';
 }
 
-
 /* ================================================================
    Schema.gs
    ================================================================ */
@@ -307,8 +386,6 @@ var COLS = {
 
   LISTAS: ['COLOR ROPA', 'TIPO BOTIN', 'CATEGORIA', 'CENTRO DE COSTO',
            'TALLE PANT', 'TALLE CAM', 'TALLE BOTIN'],
-
-  USUARIOS: ['NOMBRE', 'PIN_HASH', 'ACTIVO'],
 
   PERSONAL: ['LEGAJO', 'APELLIDO Y NOMBRE', 'CATEGORÍA', 'CENTRO DE COSTO',
              'COLOR ROPA', 'TIPO BOTÍN', 'TALLE PANT', 'TALLE CAM',
@@ -346,8 +423,6 @@ var E = {
   PRENDA: 'PRENDA', TALLE: 'TALLE', MOTIVO: 'MOTIVO', OBS: 'OBSERVACIONES'
 };
 
-var U = { NOMBRE: 'NOMBRE', PIN: 'PIN_HASH', ACTIVO: 'ACTIVO' };
-
 /** Columna de PERSONAL con el talle de cada prenda. */
 function talleHeaderDePrenda_(prenda) {
   switch (String(prenda).toUpperCase()) {
@@ -365,7 +440,6 @@ function talleHeaderDePrenda_(prenda) {
 function grupoHeaderDePrenda_(prenda) {
   return String(prenda).toUpperCase() === 'BOTIN' ? P.TIPO_BOTIN : P.COLOR;
 }
-
 
 /* ================================================================
    Setup.gs
@@ -390,7 +464,6 @@ function inicializarSistema() {
 
   ensureHoja_(ss, SHEETS.CONFIG, COLS.CONFIG);
   ensureHoja_(ss, SHEETS.LISTAS, COLS.LISTAS);
-  ensureHoja_(ss, SHEETS.USUARIOS, COLS.USUARIOS);
   ensureHoja_(ss, SHEETS.PERSONAL, COLS.PERSONAL);
   ensureHoja_(ss, SHEETS.ENTREGAS, COLS.ENTREGAS);
   ensureHoja_(ss, SHEETS.PROVEEDORES, COLS.PROVEEDORES);
@@ -401,7 +474,7 @@ function inicializarSistema() {
   sembrarConfig_(ss);
   sembrarListas_(ss);
   sembrarProveedores_(ss);
-  sembrarUsuarioAdmin_(ss);
+  sembrarPinAcceso_(ss);
 
   aplicarValidaciones_(ss);
   aplicarFormatosFecha_(ss);
@@ -504,10 +577,19 @@ function sembrarProveedores_(ss) {
     .setValues(PRENDAS.map(function (p) { return [p]; }));
 }
 
-function sembrarUsuarioAdmin_(ss) {
-  var sh = ss.getSheetByName(SHEETS.USUARIOS);
-  if (sh.getLastRow() > 1) return;
-  sh.getRange(2, 1, 1, 3).setValues([['Administrador', hashPin_('1234'), 'SÍ']]);
+/**
+ * Siembra el PIN de acceso (hash) en CONFIG si todavía no está. PIN inicial 1234.
+ * Idempotente e independiente de sembrarConfig_: en una DB ya inicializada
+ * (donde sembrarConfig_ corta temprano) igual agrega el PIN si falta.
+ */
+function sembrarPinAcceso_(ss) {
+  var sh = ss.getSheetByName(SHEETS.CONFIG);
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim() === PARAM.PIN_HASH) return; // ya configurado
+  }
+  sh.appendRow([PARAM.PIN_HASH, hashPin_('1234'),
+    'Hash del PIN de acceso (salt$hash). Cambialo desde Ajustes. NO compartir ni borrar.']);
 }
 
 /* --------------------------- Validaciones --------------------------- */
@@ -553,23 +635,22 @@ function aplicarFormatosFecha_(ss) {
   ss.getSheetByName(SHEETS.CONFIG).getRange(5, 2).setNumberFormat('dd/MM/yyyy');
 }
 
-
 /* ================================================================
    Auth.gs
    ================================================================ */
 
 /**
- * Auth.gs — Login por PIN y sesión por token firmado. Independiente del nivel
- * de acceso de Google del Web App: aunque el deploy sea anónimo, sin PIN válido
- * no se hace nada.
+ * Auth.gs — Acceso por un único PIN y sesión por token firmado. Aunque el
+ * Web App se publique anónimo, sin el PIN correcto no se hace nada.
  *
- * USUARIOS: NOMBRE | PIN_HASH (formato salt$hash) | ACTIVO. El token identifica
- * al usuario para la trazabilidad (quién registró/congeló cada cosa).
+ * El PIN se guarda como hash (salt$hash) en CONFIG (pin_acceso_hash). El token
+ * lleva una identidad fija "Compras" para la trazabilidad (quién congeló/registró).
  */
 
 var TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
 var HASH_ITER = 10000;
 var PROP_SECRET = 'TOKEN_SECRET';
+var IDENTIDAD_FIJA = 'Compras'; // única identidad en tokens e Historial
 
 /* ----------------------------- Hash de PIN ----------------------------- */
 
@@ -641,62 +722,26 @@ function validarToken_(token) {
 
 /* ----------------------------- Login ----------------------------- */
 
-/** Valida nombre + PIN contra USUARIOS y devuelve un token. */
-function loginConPin_(nombre, pin) {
-  var objetivo = normalizar_(nombre);
-  var data = leerObjetos_(SHEETS.USUARIOS);
-  for (var i = 0; i < data.filas.length; i++) {
-    var f = data.filas[i];
-    if (normalizar_(f[U.NOMBRE]) === objetivo && esSi_(f[U.ACTIVO])) {
-      if (verifyPin_(pin, f[U.PIN])) {
-        return { ok: true, token: emitirToken_(f[U.NOMBRE]), nombre: f[U.NOMBRE] };
-      }
-      break;
-    }
+/** Valida el PIN de acceso contra CONFIG y devuelve un token (identidad "Compras"). */
+function loginPin_(pin) {
+  var hash = getPinHash_();
+  if (!hash) {
+    throw new Error('El sistema no tiene PIN configurado. Ejecutá inicializarSistema().');
   }
-  throw new Error('Nombre o PIN incorrecto.');
+  if (!verifyPin_(pin, hash)) {
+    throw new Error('PIN incorrecto.');
+  }
+  return { ok: true, token: emitirToken_(IDENTIDAD_FIJA), nombre: IDENTIDAD_FIJA };
 }
 
-/** Lista de nombres activos para poblar el selector de login. */
-function listarNombresLogin_() {
-  var data = leerObjetos_(SHEETS.USUARIOS);
-  return data.filas
-    .filter(function (f) { return esSi_(f[U.ACTIVO]); })
-    .map(function (f) { return f[U.NOMBRE]; });
-}
-
-/* ------------------------- Gestión de usuarios ------------------------- */
-
-function crearUsuario_(nombre, pin) {
-  if (!nombre || !/^\d{4}$/.test(String(pin))) {
-    throw new Error('Nombre y PIN de 4 dígitos son obligatorios.');
+/** Cambia el PIN de acceso. Sólo accesible desde una sesión válida. */
+function cambiarPinAcceso_(pinNuevo) {
+  if (!/^\d{4}$/.test(String(pinNuevo))) {
+    throw new Error('El PIN debe tener 4 dígitos.');
   }
-  var existentes = leerObjetos_(SHEETS.USUARIOS);
-  var objetivo = normalizar_(nombre);
-  for (var i = 0; i < existentes.filas.length; i++) {
-    if (normalizar_(existentes.filas[i][U.NOMBRE]) === objetivo) {
-      throw new Error('Ya existe un usuario con ese nombre.');
-    }
-  }
-  appendFilaPorHeader_(SHEETS.USUARIOS, {
-    'NOMBRE': nombre, 'PIN_HASH': hashPin_(pin), 'ACTIVO': 'SÍ'
-  });
+  escribirConfig_(PARAM.PIN_HASH, hashPin_(pinNuevo));
   return { ok: true };
 }
-
-function cambiarPin_(nombre, pinNuevo) {
-  if (!/^\d{4}$/.test(String(pinNuevo))) throw new Error('El PIN debe tener 4 dígitos.');
-  var data = leerObjetos_(SHEETS.USUARIOS);
-  var colPin = colPorHeader_(data.headers, U.PIN);
-  for (var i = 0; i < data.filas.length; i++) {
-    if (normalizar_(data.filas[i][U.NOMBRE]) === normalizar_(nombre)) {
-      data.hoja.getRange(data.indiceFila[i], colPin).setValue(hashPin_(pinNuevo));
-      return { ok: true };
-    }
-  }
-  throw new Error('Usuario no encontrado.');
-}
-
 
 /* ================================================================
    Personal.gs
@@ -807,7 +852,6 @@ function setActivoOperario_(legajo, activo) {
   return { ok: true, legajo: legajo, activo: !!activo };
 }
 
-
 /* ================================================================
    Entregas.gs
    ================================================================ */
@@ -888,6 +932,87 @@ function registrarEntrega_(datos) {
   return { ok: true, legajo: op[P.LEGAJO], prendas: registradas, fecha: fmtFecha_(fecha) };
 }
 
+/* ===================== Pendientes de la última compra (Fase 5) ===================== */
+
+/**
+ * Lista de trabajo "Entregar": qué falta entregar de la ÚLTIMA compra congelada.
+ *
+ * No hay hoja ni esfera nueva: el pendiente se DERIVA cruzando dos cosas que ya
+ * existen — la corrida congelada (HISTORIAL.DETALLE_JSON.incluidas: lista por
+ * persona con legajo/prenda/talle/grupo/estado) contra ENTREGAS posteriores a su
+ * congelado. Una prenda deja de estar pendiente apenas se registra su entrega
+ * con fecha >= FECHA_CONGELADO (registrar reinicia el reloj y auto-cumple el
+ * pendiente). Backdatear antes del congelado la deja pendiente, a propósito.
+ */
+function entregasPendientes_() {
+  var hist = leerObjetos_(SHEETS.HISTORIAL);
+  if (!hist.filas.length) {
+    return { hayCompra: false, total: 0, personas: [] };
+  }
+  var ultima = hist.filas[hist.filas.length - 1]; // append-only: la última es la más nueva
+  var detalle = {};
+  try { detalle = JSON.parse(ultima.DETALLE_JSON || '{}'); } catch (e) { detalle = {}; }
+  var incluidas = detalle.incluidas || [];
+
+  var fechaCongelado = aFecha_(ultima.FECHA_CONGELADO);
+  var entregadas = entregadasDesde_(fechaCongelado);
+
+  // Agrupa pendientes por persona, conservando el orden de la corrida.
+  var porLegajo = {}, orden = [];
+  incluidas.forEach(function (f) {
+    var leg = claveLegajo_(f.legajo);
+    var prenda = String(f.prenda || '').toUpperCase();
+    if (!leg || PRENDAS.indexOf(prenda) < 0) return;
+    if (entregadas[leg + '|' + prenda]) return; // ya entregada desde el congelado
+    if (!porLegajo[leg]) {
+      porLegajo[leg] = { legajo: f.legajo, nombre: f.nombre || '', items: [] };
+      orden.push(leg);
+    }
+    porLegajo[leg].items.push({
+      prenda: prenda,
+      talle: f.talle || '',
+      grupo: f.grupo || '',
+      estado: f.estado || ''
+    });
+  });
+
+  var personas = orden.map(function (leg) { return porLegajo[leg]; });
+  var total = personas.reduce(function (n, p) { return n + p.items.length; }, 0);
+
+  return {
+    hayCompra: true,
+    idCorrida: ultima.ID_CORRIDA,
+    fechaCorrida: ultima.FECHA_CORRIDA,
+    fechaCongelado: ultima.FECHA_CONGELADO,
+    total: total,
+    personas: personas
+  };
+}
+
+/** { "claveLegajo|PRENDA": true } de toda entrega con fecha >= desde (o todas si desde es null). */
+function entregadasDesde_(desde) {
+  var data = leerEntregas_();
+  var t = desde ? desde.getTime() : 0;
+  var mapa = {};
+  data.filas.forEach(function (f) {
+    if (!f._fecha || f._fecha.getTime() < t) return;
+    var leg = claveLegajo_(f[E.LEGAJO]);
+    var prenda = String(f[E.PRENDA] || '').toUpperCase();
+    if (!leg || PRENDAS.indexOf(prenda) < 0) return;
+    mapa[leg + '|' + prenda] = true;
+  });
+  return mapa;
+}
+
+/**
+ * Confirma la entrega de un pendiente desde la lista de trabajo. Reusa
+ * registrarEntrega_ (reinicia relojes igual que una entrega suelta) y devuelve
+ * la lista de pendientes ya refrescada, para que el front no haga otra vuelta.
+ */
+function confirmarEntregas_(datos) {
+  var entrega = registrarEntrega_(datos);
+  return { ok: true, entrega: entrega, pendientes: entregasPendientes_() };
+}
 
 /* ================================================================
    Calculo.gs
@@ -992,7 +1117,6 @@ function evaluarPrenda_(op, prenda, ultimaFecha, fechaObjetivo, hoy, vida, techo
   return base;
 }
 
-
 /* ================================================================
    Corrida.gs
    ================================================================ */
@@ -1046,6 +1170,38 @@ function resumir_(filas) {
   return r;
 }
 
+/**
+ * Resumen para el tablero de inicio. Compone sobre el motor de cálculo, sin
+ * recalcular nada nuevo:
+ *  - comprar  : qué toca comprar AHORA (corrida más cercana).
+ *  - sinTalle : prendas que entran a la corrida pero no se pueden pedir por
+ *               falta de talle (poka-yoke: van adelante).
+ *  - prevision: qué va a vencer dentro del horizonte configurado.
+ *  - entregasPendientes: de la última compra congelada (Fase 5; hoy 0).
+ */
+function resumenTablero_() {
+  var corrida = calcularCorrida_();
+  var prevision = generarPrevision_();
+  var rc = corrida.resumen || {};
+  var rp = prevision.resumen || {};
+  return {
+    comprar: {
+      total: rc.total || 0,
+      criticos: rc.criticos || 0,
+      elegibles: rc.elegibles || 0,
+      sinDato: rc.sinDato || 0,
+      fecha: corrida.fechaCorrida
+    },
+    sinTalle: rc.faltaTalle || 0,
+    prevision: {
+      dias: prevision.dias,
+      total: rp.total || 0,
+      criticos: rp.criticos || 0,
+      fecha: prevision.fechaObjetivo
+    },
+    entregasPendientes: entregasPendientes_().total // pendientes de la última compra congelada
+  };
+}
 
 /* ================================================================
    Pedido.gs
@@ -1060,13 +1216,49 @@ function resumir_(filas) {
  * exclusiones: lista de claves "LEGAJO|PRENDA" a dejar afuera (lo que el
  * usuario marcó como no entregado en la pantalla de la corrida).
  */
-function armarPedido_(exclusiones) {
-  var corrida = calcularCorrida_();
+function armarPedido_(exclusiones, horizonte) {
+  var esPrev = (horizonte === 'prevision');
+  var vista = esPrev ? generarPrevision_() : calcularCorrida_();
+  var ped = armarDesdeFilas_(vista.filas, exclusiones);
+  ped.horizonte = esPrev ? 'prevision' : 'ahora';
+  ped.fechaCorrida = vista.fechaCorrida || vista.fechaObjetivo;
+  ped.fechaObjetivo = vista.fechaObjetivo;
+  ped.dias = vista.dias || 0;
+  return ped;
+}
+
+/**
+ * Vista unificada de la pantalla "Comprar": en UNA pasada calcula la lista del
+ * horizonte elegido (corrida actual o previsión) y arma el pedido (matrices +
+ * proveedores) sobre esas mismas filas, así evaluarPadron_ corre una sola vez.
+ *  horizonte: 'ahora' (default) | 'prevision'.
+ */
+function vistaComprar_(horizonte, exclusiones) {
+  var esPrev = (horizonte === 'prevision');
+  var vista = esPrev ? generarPrevision_() : calcularCorrida_();
+  return {
+    horizonte: esPrev ? 'prevision' : 'ahora',
+    titulo: vista.titulo,
+    fechaCorrida: vista.fechaCorrida || vista.fechaObjetivo,
+    fechaObjetivo: vista.fechaObjetivo,
+    dias: vista.dias || getDiasPrevision_(),
+    filas: vista.filas,
+    resumen: vista.resumen,
+    pedido: armarDesdeFilas_(vista.filas, exclusiones)
+  };
+}
+
+/**
+ * Núcleo del armado: a partir de filas ya evaluadas separa incluidas /
+ * excluidas / sin talle y construye matrices y valorización. No recalcula el
+ * padrón: trabaja sobre las filas que recibe.
+ */
+function armarDesdeFilas_(filas, exclusiones) {
   var excl = {};
   (exclusiones || []).forEach(function (k) { excl[String(k).toUpperCase()] = true; });
 
   var incluidas = [], excluidas = [], sinTalle = [];
-  corrida.filas.forEach(function (f) {
+  (filas || []).forEach(function (f) {
     var clave = claveLegajo_(f.legajo) + '|' + f.prenda;
     if (excl[clave]) { excluidas.push(f); return; }
     if (f.faltaTalle) { sinTalle.push(f); return; }
@@ -1083,7 +1275,6 @@ function armarPedido_(exclusiones) {
   });
 
   return {
-    fechaCorrida: corrida.fechaCorrida,
     matrices: matrices,
     totales: totales,
     incluidas: incluidas,
@@ -1136,7 +1327,6 @@ function cmpTalle_(a, b) {
   if (ia >= 0 && ib >= 0) return ia - ib;
   return String(a).localeCompare(String(b));
 }
-
 
 /* ================================================================
    Proveedores.gs
@@ -1242,6 +1432,72 @@ function leerPreciosProveedores_() {
   return { proveedores: proveedores };
 }
 
+/* ------------------- Lectura / escritura para la UI ------------------- */
+
+/**
+ * Forma plana para el front: { prendas, proveedores: [{ nombre, precios }] }.
+ * precios es { PANTALON, CAMISA, BOTIN } con número o null por prenda.
+ */
+function listarProveedores_() {
+  var lectura = leerPreciosProveedores_();
+  return {
+    prendas: PRENDAS,
+    proveedores: lectura.proveedores.map(function (p) {
+      return { nombre: p.nombre, precios: p.precios };
+    })
+  };
+}
+
+/**
+ * Reescribe la matriz PROVEEDORES desde la UI. datos = { proveedores: [{ nombre,
+ * precios: { PANTALON, CAMISA, BOTIN } }] }. Hasta 5 proveedores, sin nombres
+ * repetidos. Cada precio: número > 0 o vacío (no cotiza). Valida TODO antes de
+ * tocar la hoja: si algo está mal, no deja la matriz a medias.
+ */
+function guardarProveedores_(datos) {
+  datos = datos || {};
+  var entrada = (datos.proveedores || []).filter(function (p) {
+    return p && String(p.nombre || '').trim();
+  });
+  if (entrada.length > 5) throw new Error('Como máximo 5 proveedores.');
+
+  var nombres = entrada.map(function (p) { return String(p.nombre).trim(); });
+  for (var i = 0; i < nombres.length; i++) {
+    for (var j = i + 1; j < nombres.length; j++) {
+      if (normalizar_(nombres[i]) === normalizar_(nombres[j])) {
+        throw new Error('Dos proveedores con el mismo nombre: ' + nombres[i]);
+      }
+    }
+  }
+
+  function precioVal(v, prov, prenda) {
+    if (v === '' || v === null || v === undefined) return '';
+    var n = Number(v);
+    if (!isFinite(n) || n <= 0) {
+      throw new Error('Precio inválido en ' + prov + ' / ' + prenda + ': "' + v + '". Número > 0 o vacío.');
+    }
+    return n;
+  }
+
+  var filas = PRENDAS.map(function (prenda) {
+    var fila = [prenda];
+    entrada.forEach(function (p) {
+      fila.push(precioVal((p.precios || {})[prenda], String(p.nombre).trim(), prenda));
+    });
+    return fila;
+  });
+
+  var sh = requireSheet_(SHEETS.PROVEEDORES);
+  var maxCols = Math.max(sh.getMaxColumns(), 6);
+  var maxRows = Math.max(sh.getMaxRows(), 4);
+  sh.getRange(1, 2, 1, maxCols - 1).clearContent();
+  sh.getRange(2, 1, maxRows - 1, maxCols).clearContent();
+  sh.getRange(1, 1).setValue('PRENDA');
+  if (nombres.length) sh.getRange(1, 2, 1, nombres.length).setValues([nombres]);
+  sh.getRange(2, 1, filas.length, 1 + entrada.length).setValues(filas);
+  invalidarCache_();
+  return { ok: true, proveedores: nombres.length };
+}
 
 /* ================================================================
    CruceRRHH.gs
@@ -1372,7 +1628,6 @@ function aplicarCambiosCruce_(cambios) {
   return { ok: true, resultados: resultados };
 }
 
-
 /* ================================================================
    Historial.gs
    ================================================================ */
@@ -1485,7 +1740,6 @@ function detalleHistorial_(idCorrida) {
     detalle: detalle
   };
 }
-
 
 /* ================================================================
    Roturas.gs
@@ -1607,7 +1861,6 @@ function agruparRoturas_(eventos, claveCampo) {
     .sort(function (a, b) { return b.total - a.total; });
 }
 
-
 /* ================================================================
    Api.gs
    ================================================================ */
@@ -1624,7 +1877,7 @@ function agruparRoturas_(eventos, claveCampo) {
  */
 
 // Métodos que NO requieren token (pantalla de login).
-var METODOS_PUBLICOS = { login: true, listarNombresLogin: true };
+var METODOS_PUBLICOS = { loginPin: true };
 
 function apiCall(metodo, payloadJson) {
   try {
@@ -1644,17 +1897,24 @@ function enrutar_(metodo, p, sesion) {
   var usuario = sesion ? sesion.nombre : '';
   switch (metodo) {
     // --- Pre-login ---
-    case 'login': return loginConPin_(p.nombre, p.pin);
-    case 'listarNombresLogin': return listarNombresLogin_();
+    case 'loginPin': return loginPin_(p.pin);
 
-    // --- Sesión / usuarios ---
+    // --- Sesión / PIN ---
     case 'sesion': return { nombre: usuario };
-    case 'cambiarPin': return cambiarPin_(usuario, p.pinNuevo);
-    case 'crearUsuario': return crearUsuario_(p.nombre, p.pin);
+    case 'cambiarPinAcceso': return cambiarPinAcceso_(p.pinNuevo);
+
+    // --- Tablero (inicio) ---
+    case 'resumenTablero': return resumenTablero_();
 
     // --- Config / listas (para poblar selects y rótulos del front) ---
     case 'getConfig': return configParaUI_();
     case 'getListas': return getListas_();
+
+    // --- Escritura de configuración (Ajustes) ---
+    case 'guardarParametros': return guardarParametros_(p.datos || p);
+    case 'guardarListas': return guardarListas_(p.datos || p);
+    case 'listarProveedores': return listarProveedores_();
+    case 'guardarProveedores': return guardarProveedores_(p.datos || p);
 
     // --- Padrón (PERSONAL) ---
     case 'listarPersonal': return listarPersonal_(p.soloActivos !== false);
@@ -1665,13 +1925,14 @@ function enrutar_(metodo, p, sesion) {
 
     // --- Entregas ---
     case 'registrarEntrega': return registrarEntrega_(p.datos || p);
+    case 'entregasPendientes': return entregasPendientes_();
+    case 'confirmarEntregas': return confirmarEntregas_(p.datos || p);
 
-    // --- Corrida / previsión ---
+    // --- Comprar (corrida + previsión + pedido, unificado) ---
+    case 'vistaComprar': return vistaComprar_(p.horizonte, p.exclusiones || []);
     case 'calcularCorrida': return calcularCorrida_();
     case 'generarPrevision': return generarPrevision_();
-
-    // --- Pedido / proveedores ---
-    case 'armarPedido': return armarPedido_(p.exclusiones || []);
+    case 'armarPedido': return armarPedido_(p.exclusiones || [], p.horizonte);
 
     // --- Cruce RRHH ---
     case 'cruzarRRHH': return cruzarRRHH_(p.texto || '');
@@ -1702,30 +1963,23 @@ function configParaUI_() {
   };
 }
 
-
 /* ================================================================
    Main.gs
    ================================================================ */
 
 /**
- * Main.gs — Entrada del Web App. doGet sirve la SPA (index.html); el resto de
- * la app vive en los archivos HTML incluidos. Toda la lógica de datos pasa por
- * apiCall (Api.gs); acá no hay reglas de negocio.
+ * Main.gs — Entrada del Web App. La SPA entera vive en UN solo archivo HTML
+ * (index.html, con los estilos y el script incrustados). Se sirve como HTML
+ * plano: no se usa el motor de templates, así nada del JS se confunde con un
+ * scriptlet <? ?>. Toda la lógica de datos pasa por apiCall (Api.gs).
  */
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
+  return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('INGECO — Compra de Ropa')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setFaviconUrl('https://www.google.com/images/icons/product/sheets-32.png');
 }
-
-/** Permite <?!= include('NombreArchivo') ?> dentro de los HTML. */
-function include(nombre) {
-  return HtmlService.createHtmlOutputFromFile(nombre).getContent();
-}
-
 
 /* ================================================================
    Seed.gs
@@ -1860,3 +2114,57 @@ function buscarCol_(headersNorm, alias) {
 function celda_(fila, idx) {
   return idx >= 0 && idx < fila.length ? fila[idx] : '';
 }
+
+/* ------------------------------------------------------------------ *
+ * Diagnóstico Fase 2 (escritura de config). Correr a mano desde el
+ * editor: lee los valores actuales y los reescribe IGUAL (round-trip
+ * no destructivo). Sirve para confirmar que guardarParametros_,
+ * guardarListas_ y guardarProveedores_ funcionan contra la planilla
+ * real, antes de que exista la pantalla de Ajustes (Fase 6).
+ * No es parte del flujo de la app.
+ * ------------------------------------------------------------------ */
+function _probarConfigEscritura() {
+  var out = [];
+
+  // 1) Parámetros: leer -> reescribir iguales -> releer.
+  var antesP = {
+    vidaUtil: getVidaUtilMeses_(),
+    cadencia: getCadenciaMeses_(),
+    diasPrevision: getDiasPrevision_(),
+    fechaAncla: getFechaAncla_()
+  };
+  guardarParametros_(antesP);
+  invalidarCache_();
+  out.push('PARAMETROS  vidaUtil=' + getVidaUtilMeses_() +
+           ' cadencia=' + getCadenciaMeses_() +
+           ' techo=' + getTechoMeses_() +
+           ' diasPrevision=' + getDiasPrevision_() +
+           ' fechaAncla=' + fmtFecha_(getFechaAncla_()));
+
+  // 2) Listas: reescribir las columnas conocidas con sus valores actuales.
+  var listas = getListas_();
+  var payloadListas = {};
+  COLS.LISTAS.forEach(function (h) { payloadListas[h] = (listas[h] || []).slice(); });
+  guardarListas_(payloadListas);
+  invalidarCache_();
+  var rel = getListas_();
+  out.push('LISTAS      ' + COLS.LISTAS.map(function (h) {
+    return h + '=' + ((rel[h] || []).length);
+  }).join('  '));
+
+  // 3) Proveedores: leer la matriz y reescribirla igual.
+  var prov = listarProveedores_();
+  guardarProveedores_({ proveedores: prov.proveedores });
+  invalidarCache_();
+  var relProv = listarProveedores_();
+  out.push('PROVEEDORES ' + relProv.proveedores.map(function (p) {
+    return p.nombre + '{' + PRENDAS.map(function (k) {
+      return k.charAt(0) + ':' + (p.precios[k] === null ? '-' : p.precios[k]);
+    }).join(',') + '}';
+  }).join('  '));
+
+  var msg = 'OK round-trip Fase 2\n' + out.join('\n');
+  Logger.log(msg);
+  return msg;
+}
+
