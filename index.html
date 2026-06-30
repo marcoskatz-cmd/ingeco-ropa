@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <?!= include('Estilos'); ?>
+</head>
+<body>
+  <!-- Pantalla de login -->
+  <div id="login" class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">INGECO</div>
+      <div class="login-sub">Compra de Ropa de Trabajo</div>
+      <label class="campo">
+        <span>Usuario</span>
+        <select id="loginNombre"></select>
+      </label>
+      <label class="campo">
+        <span>PIN</span>
+        <input id="loginPin" type="password" inputmode="numeric" maxlength="4"
+               autocomplete="off" placeholder="****">
+      </label>
+      <button id="btnLogin" class="btn btn-primary btn-block">Entrar</button>
+      <div id="loginError" class="error oculto"></div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="oculto">
+    <header class="topbar">
+      <div class="topbar-marca">INGECO · Ropa</div>
+      <nav id="nav" class="nav"></nav>
+      <div class="topbar-user">
+        <span id="usuarioActual"></span>
+        <button id="btnSalir" class="btn-link">Salir</button>
+      </div>
+    </header>
+    <main id="vista" class="vista"></main>
+    <div id="toast" class="toast oculto"></div>
+  </div>
+
+  <!-- Modal genérico -->
+  <div id="modal" class="modal-back oculto">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span id="modalTitulo"></span>
+        <button id="modalCerrar" class="btn-link">✕</button>
+      </div>
+      <div id="modalCuerpo" class="modal-cuerpo"></div>
+    </div>
+  </div>
+
+  <?!= include('App'); ?>
+</body>
+</html>

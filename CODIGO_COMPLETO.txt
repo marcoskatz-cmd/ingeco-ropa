@@ -1,0 +1,1862 @@
+/* ============================================================
+ * INGECO Ropa - CODIGO COMPLETO (todos los .gs en un archivo)
+ *
+ * Pega TODO esto en un unico archivo .gs del editor de Apps Script
+ * (por ej. el "Codigo.gs" por defecto). Es el backend entero.
+ *
+ * Aparte van como archivos separados (no entran en un .gs):
+ *   - 3 HTML: index, Estilos, App  (Archivo > Nuevo > HTML)
+ *   - appsscript.json (manifiesto del proyecto)
+ *
+ * Generado 2026-06-29.
+ * Orden: Config, Util, Schema, Setup, Auth, Personal, Entregas, Calculo, Corrida, Pedido, Proveedores, CruceRRHH, Historial, Roturas, Api, Main, Seed
+ * ============================================================ */
+
+
+/* ================================================================
+   Config.gs
+   ================================================================ */
+
+/**
+ * Config.gs — Constantes, parámetros de negocio y acceso a la base de datos.
+ *
+ * La base de datos es una planilla de Google cuyo ID se guarda en Script
+ * Properties (SHEET_ID). La crea Setup.gs en el primer arranque; ninguna
+ * función de negocio necesita un ID hardcodeado.
+ */
+
+// Nombres de las hojas que son base de datos (persistentes).
+var SHEETS = {
+  CONFIG: 'CONFIG',
+  LISTAS: 'LISTAS',
+  USUARIOS: 'USUARIOS',
+  PERSONAL: 'PERSONAL',
+  ENTREGAS: 'ENTREGAS',
+  PROVEEDORES: 'PROVEEDORES',
+  HISTORIAL: 'HISTORIAL_COMPRAS'
+};
+
+// Las tres prendas. El reloj de cada una corre por separado.
+var PRENDAS = ['PANTALON', 'CAMISA', 'BOTIN'];
+
+// Motivos válidos de una entrega.
+var MOTIVOS = ['CICLO', 'ROTURA', 'CICLO INICIAL'];
+
+// Claves de parámetros en la hoja CONFIG.
+var PARAM = {
+  VIDA_UTIL: 'vida_util_meses',
+  CADENCIA: 'cadencia_meses',
+  TECHO: 'techo_meses',
+  FECHA_ANCLA: 'fecha_ancla_corrida',
+  DIAS_PREVISION: 'dias_prevision'
+};
+
+// Valores por defecto (los que siembra Setup; editables en CONFIG).
+var DEFAULTS = {
+  vida_util_meses: 6,
+  cadencia_meses: 2,
+  dias_prevision: 30
+};
+
+var PROP_SHEET_ID = 'SHEET_ID';
+
+// Cache de un solo execution para no releer CONFIG en cada llamada.
+var _memo = {};
+
+/** Devuelve la planilla base de datos. Lanza si Setup no corrió. */
+function getSpreadsheet_() {
+  if (_memo.ss) return _memo.ss;
+  var id = PropertiesService.getScriptProperties().getProperty(PROP_SHEET_ID);
+  if (!id) {
+    throw new Error('El sistema no está inicializado. Ejecutá inicializarSistema() una vez.');
+  }
+  _memo.ss = SpreadsheetApp.openById(id);
+  return _memo.ss;
+}
+
+/** Hoja por nombre, o null si no existe. */
+function getSheet_(nombre) {
+  return getSpreadsheet_().getSheetByName(nombre);
+}
+
+/** Hoja por nombre; lanza si falta (debería existir tras Setup). */
+function requireSheet_(nombre) {
+  var sh = getSheet_(nombre);
+  if (!sh) throw new Error('Falta la hoja "' + nombre + '". Ejecutá inicializarSistema().');
+  return sh;
+}
+
+/* ----------------------------- CONFIG ----------------------------- */
+
+/** Lee CONFIG (PARAMETRO, VALOR) a un mapa, cacheado por execution. */
+function getConfigMap_() {
+  if (_memo.config) return _memo.config;
+  var sh = requireSheet_(SHEETS.CONFIG);
+  var data = sh.getDataRange().getValues();
+  var map = {};
+  for (var i = 1; i < data.length; i++) {
+    var k = String(data[i][0] || '').trim();
+    if (k) map[k] = data[i][1];
+  }
+  _memo.config = map;
+  return map;
+}
+
+function getParamNum_(clave, porDefecto) {
+  var v = getConfigMap_()[clave];
+  var n = Number(v);
+  return isFinite(n) && v !== '' && v !== null ? n : porDefecto;
+}
+
+function getVidaUtilMeses_() { return getParamNum_(PARAM.VIDA_UTIL, DEFAULTS.vida_util_meses); }
+function getCadenciaMeses_() { return getParamNum_(PARAM.CADENCIA, DEFAULTS.cadencia_meses); }
+
+/**
+ * Techo duro = vida útil + cadencia. SIEMPRE se calcula, nunca se hardcodea:
+ * si cambia la cadencia, el techo se mueve solo.
+ */
+function getTechoMeses_() { return getVidaUtilMeses_() + getCadenciaMeses_(); }
+
+function getDiasPrevision_() { return getParamNum_(PARAM.DIAS_PREVISION, DEFAULTS.dias_prevision); }
+
+/** Fecha ancla de la grilla de corridas. */
+function getFechaAncla_() {
+  var v = getConfigMap_()[PARAM.FECHA_ANCLA];
+  var d = aFecha_(v);
+  if (!d) throw new Error('CONFIG: falta una fecha_ancla_corrida válida.');
+  return d;
+}
+
+/* ----------------------------- LISTAS ----------------------------- */
+
+/**
+ * Devuelve las listas cerradas configurables (columnas de la hoja LISTAS).
+ * Encabezados esperados: COLOR ROPA, TIPO BOTIN, CATEGORIA, CENTRO DE COSTO,
+ * TALLE PANT, TALLE CAM, TALLE BOTIN.
+ */
+function getListas_() {
+  if (_memo.listas) return _memo.listas;
+  var sh = getSheet_(SHEETS.LISTAS);
+  var listas = {};
+  if (sh) {
+    var data = sh.getDataRange().getValues();
+    var headers = (data[0] || []).map(function (h) { return String(h || '').trim(); });
+    for (var c = 0; c < headers.length; c++) {
+      if (!headers[c]) continue;
+      var col = [];
+      for (var r = 1; r < data.length; r++) {
+        var val = String(data[r][c] || '').trim();
+        if (val) col.push(val);
+      }
+      listas[headers[c]] = col;
+    }
+  }
+  _memo.listas = listas;
+  return listas;
+}
+
+/** Invalida la cache de execution (tras escribir CONFIG/LISTAS). */
+function invalidarCache_() { _memo = {}; }
+
+
+/* ================================================================
+   Util.gs
+   ================================================================ */
+
+/**
+ * Util.gs — Helpers de uso general: fechas, lectura/escritura de hojas,
+ * normalización de texto. Sin estado propio.
+ */
+
+var MS_DIA = 24 * 60 * 60 * 1000;
+var DIAS_MES = 30.44; // promedio usado para meses de uso
+
+/** Hoy a medianoche (zona horaria del proyecto). */
+function hoy_() {
+  var n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+}
+
+/** Coacciona un valor de celda a Date, o null. */
+function aFecha_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  }
+  if (typeof v === 'number') {
+    // Serial de Sheets (días desde 1899-12-30).
+    var base = new Date(1899, 11, 30);
+    return new Date(base.getTime() + v * MS_DIA);
+  }
+  if (typeof v === 'string' && v.trim()) {
+    var s = v.trim();
+    // dd/mm/yyyy
+    var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) {
+      var yy = Number(m[3]); if (yy < 100) yy += 2000;
+      return new Date(yy, Number(m[2]) - 1, Number(m[1]));
+    }
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  return null;
+}
+
+/** Meses de uso entre dos fechas (días / 30.44). */
+function mesesEntre_(desde, hasta) {
+  if (!desde || !hasta) return null;
+  return (hasta.getTime() - desde.getTime()) / MS_DIA / DIAS_MES;
+}
+
+/** Suma n meses calendario a una fecha. */
+function sumarMeses_(fecha, n) {
+  return new Date(fecha.getFullYear(), fecha.getMonth() + n, fecha.getDate());
+}
+
+/** Diferencia entera de meses calendario (b - a). */
+function difMesesCalendario_(a, b) {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+/** Formatea Date a dd/mm/yyyy en la zona del proyecto. */
+function fmtFecha_(fecha) {
+  if (!fecha) return '';
+  var tz = Session.getScriptTimeZone() || 'America/Argentina/Tucuman';
+  return Utilities.formatDate(fecha, tz, 'dd/MM/yyyy');
+}
+
+/* ------------------------- Lectura de hojas ------------------------- */
+
+/**
+ * Lee una hoja como lista de objetos { header: valor }.
+ * Devuelve { headers: [...], filas: [{...}], indiceFila: [n] } donde
+ * indiceFila[i] es el número de fila real (1-based) de filas[i].
+ */
+function leerObjetos_(nombreHoja) {
+  var sh = requireSheet_(nombreHoja);
+  var data = sh.getDataRange().getValues();
+  var headers = (data[0] || []).map(function (h) { return String(h || '').trim(); });
+  var filas = [];
+  var indiceFila = [];
+  for (var r = 1; r < data.length; r++) {
+    var fila = data[r];
+    if (fila.every(function (c) { return c === '' || c === null; })) continue;
+    var obj = {};
+    for (var c = 0; c < headers.length; c++) {
+      if (headers[c]) obj[headers[c]] = fila[c];
+    }
+    filas.push(obj);
+    indiceFila.push(r + 1);
+  }
+  return { headers: headers, filas: filas, indiceFila: indiceFila, hoja: sh };
+}
+
+/** Índice de columna (1-based) por encabezado, o 0 si no está. */
+function colPorHeader_(headers, nombre) {
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i]).trim().toUpperCase() === String(nombre).trim().toUpperCase()) return i + 1;
+  }
+  return 0;
+}
+
+/** Agrega una fila al final respetando el orden de encabezados. */
+function appendFilaPorHeader_(nombreHoja, obj) {
+  var sh = requireSheet_(nombreHoja);
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]
+    .map(function (h) { return String(h || '').trim(); });
+  var fila = headers.map(function (h) { return (h in obj) ? obj[h] : ''; });
+  sh.appendRow(fila);
+  return sh.getLastRow();
+}
+
+/* ------------------------- Texto ------------------------- */
+
+/** Normaliza para comparar: sin acentos, mayúsculas, espacios colapsados. */
+function normalizar_(s) {
+  if (s === null || s === undefined) return '';
+  var t = String(s).trim().toUpperCase().replace(/\s+/g, ' ');
+  t = t.replace(/[ÁÀÂÄÃ]/g, 'A').replace(/[ÉÈÊË]/g, 'E').replace(/[ÍÌÎÏ]/g, 'I')
+       .replace(/[ÓÒÔÖÕ]/g, 'O').replace(/[ÚÙÛÜ]/g, 'U').replace(/Ñ/g, 'N');
+  return t;
+}
+
+/** Legajo normalizado para usar como clave de cruce (sin espacios, mayús). */
+function claveLegajo_(v) {
+  return String(v === null || v === undefined ? '' : v).trim().toUpperCase().replace(/\s+/g, '');
+}
+
+/** SÍ/NO -> booleano. */
+function esSi_(v) {
+  var t = normalizar_(v);
+  return t === 'SI' || t === 'SÍ' || t === 'TRUE' || t === 'VERDADERO' || t === 'X' || t === '1';
+}
+
+
+/* ================================================================
+   Schema.gs
+   ================================================================ */
+
+/**
+ * Schema.gs — Forma de las tablas: encabezados exactos de cada hoja y
+ * mapeos prenda -> columna de talle / grupo. Centralizado para que Setup y
+ * los módulos usen exactamente los mismos strings (ojo con los acentos).
+ */
+
+// Encabezados, en orden, de cada hoja base de datos.
+var COLS = {
+  CONFIG: ['PARAMETRO', 'VALOR', 'NOTA'],
+
+  LISTAS: ['COLOR ROPA', 'TIPO BOTIN', 'CATEGORIA', 'CENTRO DE COSTO',
+           'TALLE PANT', 'TALLE CAM', 'TALLE BOTIN'],
+
+  USUARIOS: ['NOMBRE', 'PIN_HASH', 'ACTIVO'],
+
+  PERSONAL: ['LEGAJO', 'APELLIDO Y NOMBRE', 'CATEGORÍA', 'CENTRO DE COSTO',
+             'COLOR ROPA', 'TIPO BOTÍN', 'TALLE PANT', 'TALLE CAM',
+             'TALLE BOTÍN', 'ACTIVO', 'OBSERVACIONES'],
+
+  ENTREGAS: ['FECHA', 'LEGAJO', 'APELLIDO Y NOMBRE', 'PRENDA', 'TALLE',
+             'MOTIVO', 'OBSERVACIONES'],
+
+  PROVEEDORES: ['PRENDA', 'PROVEEDOR 1', 'PROVEEDOR 2', 'PROVEEDOR 3',
+                'PROVEEDOR 4', 'PROVEEDOR 5'],
+
+  HISTORIAL: ['ID_CORRIDA', 'FECHA_CORRIDA', 'FECHA_CONGELADO', 'USUARIO',
+              'TOTAL_PANTALON', 'TOTAL_CAMISA', 'TOTAL_BOTIN',
+              'TOTAL_UNIDADES', 'PROVEEDOR_GANADOR', 'COSTO_GANADOR',
+              'DETALLE_JSON']
+};
+
+// Acceso simbólico a columnas de PERSONAL (evita repetir strings con acentos).
+var P = {
+  LEGAJO: 'LEGAJO',
+  NOMBRE: 'APELLIDO Y NOMBRE',
+  CATEGORIA: 'CATEGORÍA',
+  CENTRO: 'CENTRO DE COSTO',
+  COLOR: 'COLOR ROPA',
+  TIPO_BOTIN: 'TIPO BOTÍN',
+  TALLE_PANT: 'TALLE PANT',
+  TALLE_CAM: 'TALLE CAM',
+  TALLE_BOTIN: 'TALLE BOTÍN',
+  ACTIVO: 'ACTIVO',
+  OBS: 'OBSERVACIONES'
+};
+
+var E = {
+  FECHA: 'FECHA', LEGAJO: 'LEGAJO', NOMBRE: 'APELLIDO Y NOMBRE',
+  PRENDA: 'PRENDA', TALLE: 'TALLE', MOTIVO: 'MOTIVO', OBS: 'OBSERVACIONES'
+};
+
+var U = { NOMBRE: 'NOMBRE', PIN: 'PIN_HASH', ACTIVO: 'ACTIVO' };
+
+/** Columna de PERSONAL con el talle de cada prenda. */
+function talleHeaderDePrenda_(prenda) {
+  switch (String(prenda).toUpperCase()) {
+    case 'PANTALON': return P.TALLE_PANT;
+    case 'CAMISA': return P.TALLE_CAM;
+    case 'BOTIN': return P.TALLE_BOTIN;
+    default: throw new Error('Prenda desconocida: ' + prenda);
+  }
+}
+
+/**
+ * Columna de PERSONAL que define el GRUPO de compra: color para pantalón y
+ * camisa, tipo de botín para botín.
+ */
+function grupoHeaderDePrenda_(prenda) {
+  return String(prenda).toUpperCase() === 'BOTIN' ? P.TIPO_BOTIN : P.COLOR;
+}
+
+
+/* ================================================================
+   Setup.gs
+   ================================================================ */
+
+/**
+ * Setup.gs — Provisiona la base de datos: crea la planilla (si no existe),
+ * arma todas las hojas con encabezados, formato (azul cobalto #223D85),
+ * validaciones de listas cerradas y semillas mínimas. Idempotente.
+ *
+ * Ejecutar inicializarSistema() una vez tras subir el código.
+ */
+
+var COBALTO = '#223D85';
+var BLANCO = '#FFFFFF';
+var ROJO = '#F4C7C3';      // crítico / innegociable
+var AMARILLO = '#FCE8B2';  // elegible
+var GRIS = '#D9D9D9';      // sin dato
+
+function inicializarSistema() {
+  var ss = crearOAbrirDB_();
+
+  ensureHoja_(ss, SHEETS.CONFIG, COLS.CONFIG);
+  ensureHoja_(ss, SHEETS.LISTAS, COLS.LISTAS);
+  ensureHoja_(ss, SHEETS.USUARIOS, COLS.USUARIOS);
+  ensureHoja_(ss, SHEETS.PERSONAL, COLS.PERSONAL);
+  ensureHoja_(ss, SHEETS.ENTREGAS, COLS.ENTREGAS);
+  ensureHoja_(ss, SHEETS.PROVEEDORES, COLS.PROVEEDORES);
+  ensureHoja_(ss, SHEETS.HISTORIAL, COLS.HISTORIAL);
+
+  limpiarHojasExtra_(ss);
+
+  sembrarConfig_(ss);
+  sembrarListas_(ss);
+  sembrarProveedores_(ss);
+  sembrarUsuarioAdmin_(ss);
+
+  aplicarValidaciones_(ss);
+  aplicarFormatosFecha_(ss);
+
+  invalidarCache_();
+  Logger.log('Sistema inicializado. Planilla: ' + ss.getUrl());
+  return ss.getUrl();
+}
+
+/** Devuelve la planilla DB; la crea y guarda su ID si no existe. */
+function crearOAbrirDB_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty(PROP_SHEET_ID);
+  if (id) {
+    try { return SpreadsheetApp.openById(id); } catch (e) { /* recrear abajo */ }
+  }
+  var ss = SpreadsheetApp.create('INGECO Ropa — Base de Datos');
+  props.setProperty(PROP_SHEET_ID, ss.getId());
+  _memo = {};
+  return ss;
+}
+
+/** Crea la hoja si falta y (re)escribe encabezados con formato cobalto. */
+function ensureHoja_(ss, nombre, headers) {
+  var sh = ss.getSheetByName(nombre);
+  if (!sh) sh = ss.insertSheet(nombre);
+  sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  formatearHeader_(sh, headers.length);
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function formatearHeader_(sh, nCols) {
+  var rng = sh.getRange(1, 1, 1, nCols);
+  rng.setBackground(COBALTO).setFontColor(BLANCO).setFontFamily('Arial')
+     .setFontWeight('bold').setVerticalAlignment('middle');
+  sh.getRange(1, 1, sh.getMaxRows(), nCols).setFontFamily('Arial');
+}
+
+/** Borra hojas que no son parte del modelo (ej. la "Hoja 1" por defecto). */
+function limpiarHojasExtra_(ss) {
+  var validas = {};
+  Object.keys(SHEETS).forEach(function (k) { validas[SHEETS[k]] = true; });
+  ss.getSheets().forEach(function (sh) {
+    if (!validas[sh.getName()] && ss.getSheets().length > 1) {
+      ss.deleteSheet(sh);
+    }
+  });
+}
+
+/* ----------------------------- Semillas ----------------------------- */
+
+function sembrarConfig_(ss) {
+  var sh = ss.getSheetByName(SHEETS.CONFIG);
+  if (sh.getLastRow() > 1) return; // ya sembrado
+  var hoy = hoy_();
+  var filas = [
+    [PARAM.VIDA_UTIL, DEFAULTS.vida_util_meses,
+      'Vida útil de cada prenda en meses. Es el objetivo de recambio.'],
+    [PARAM.CADENCIA, DEFAULTS.cadencia_meses,
+      'Cada cuántos meses hay una corrida de compra. Divide a la vida útil.'],
+    [PARAM.TECHO, '=B2+B3',
+      'Techo duro = vida útil + cadencia. NO EDITAR: se recalcula solo. Ninguna prenda debe superarlo.'],
+    [PARAM.FECHA_ANCLA, hoy,
+      'Fecha de una corrida conocida. Define la grilla (ancla, ancla+cadencia, ...). AJUSTAR a una corrida real.'],
+    [PARAM.DIAS_PREVISION, DEFAULTS.dias_prevision,
+      'Horizonte de la previsión anticipada, en días.']
+  ];
+  sh.getRange(2, 1, filas.length, 3).setValues(filas);
+  sh.setColumnWidth(3, 480);
+  sh.getRange(2, 3, filas.length, 1).setWrap(true).setFontColor('#666666');
+}
+
+function sembrarListas_(ss) {
+  var sh = ss.getSheetByName(SHEETS.LISTAS);
+  if (sh.getLastRow() > 1) return;
+  // Valores por defecto editables. Reemplazar por los reales de INGECO.
+  var cols = {
+    'COLOR ROPA': ['AZUL', 'NARANJA', 'GRIS', 'VERDE'],
+    'TIPO BOTIN': ['PUNTERA ACERO', 'PUNTERA COMPOSITE', 'DIELECTRICO'],
+    'CATEGORIA': ['OFICIAL', 'MEDIO OFICIAL', 'AYUDANTE', 'MAQUINISTA', 'CHOFER'],
+    'CENTRO DE COSTO': ['OBRA 1', 'OBRA 2', 'TALLER', 'ADMINISTRACION'],
+    'TALLE PANT': ['38', '40', '42', '44', '46', '48', '50', '52', '54'],
+    'TALLE CAM': ['S', 'M', 'L', 'XL', 'XXL', 'XXXL'],
+    'TALLE BOTIN': ['38', '39', '40', '41', '42', '43', '44', '45', '46']
+  };
+  COLS.LISTAS.forEach(function (header, idx) {
+    var valores = cols[header] || [];
+    if (valores.length) {
+      sh.getRange(2, idx + 1, valores.length, 1)
+        .setValues(valores.map(function (v) { return [v]; }));
+    }
+  });
+}
+
+function sembrarProveedores_(ss) {
+  var sh = ss.getSheetByName(SHEETS.PROVEEDORES);
+  if (sh.getLastRow() > 1) return;
+  sh.getRange(2, 1, PRENDAS.length, 1)
+    .setValues(PRENDAS.map(function (p) { return [p]; }));
+}
+
+function sembrarUsuarioAdmin_(ss) {
+  var sh = ss.getSheetByName(SHEETS.USUARIOS);
+  if (sh.getLastRow() > 1) return;
+  sh.getRange(2, 1, 1, 3).setValues([['Administrador', hashPin_('1234'), 'SÍ']]);
+}
+
+/* --------------------------- Validaciones --------------------------- */
+
+function aplicarValidaciones_(ss) {
+  var N = 2000;
+  // PERSONAL: cada categórico apunta a su columna en LISTAS.
+  valRango_(ss, SHEETS.PERSONAL, 3, N, 'LISTAS!C2:C200');   // CATEGORÍA
+  valRango_(ss, SHEETS.PERSONAL, 4, N, 'LISTAS!D2:D200');   // CENTRO DE COSTO
+  valRango_(ss, SHEETS.PERSONAL, 5, N, 'LISTAS!A2:A200');   // COLOR ROPA
+  valRango_(ss, SHEETS.PERSONAL, 6, N, 'LISTAS!B2:B200');   // TIPO BOTÍN
+  valRango_(ss, SHEETS.PERSONAL, 7, N, 'LISTAS!E2:E200');   // TALLE PANT
+  valRango_(ss, SHEETS.PERSONAL, 8, N, 'LISTAS!F2:F200');   // TALLE CAM
+  valRango_(ss, SHEETS.PERSONAL, 9, N, 'LISTAS!G2:G200');   // TALLE BOTÍN
+  valLista_(ss, SHEETS.PERSONAL, 10, N, ['SÍ', 'NO']);      // ACTIVO
+
+  // ENTREGAS: prenda y motivo cerrados.
+  valLista_(ss, SHEETS.ENTREGAS, 4, 5000, PRENDAS);
+  valLista_(ss, SHEETS.ENTREGAS, 6, 5000, MOTIVOS);
+
+  // PROVEEDORES: prenda cerrada.
+  valLista_(ss, SHEETS.PROVEEDORES, 1, 50, PRENDAS);
+}
+
+function valRango_(ss, hoja, col, nFilas, a1Rango) {
+  var sh = ss.getSheetByName(hoja);
+  var fuente = ss.getRange(a1Rango);
+  var regla = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(fuente, true).setAllowInvalid(false).build();
+  sh.getRange(2, col, nFilas, 1).setDataValidation(regla);
+}
+
+function valLista_(ss, hoja, col, nFilas, valores) {
+  var sh = ss.getSheetByName(hoja);
+  var regla = SpreadsheetApp.newDataValidation()
+    .requireValueInList(valores, true).setAllowInvalid(false).build();
+  sh.getRange(2, col, nFilas, 1).setDataValidation(regla);
+}
+
+function aplicarFormatosFecha_(ss) {
+  ss.getSheetByName(SHEETS.ENTREGAS).getRange(2, 1, 5000, 1).setNumberFormat('dd/MM/yyyy');
+  // fecha_ancla está en CONFIG fila 5 (orden de semilla), columna VALOR (B).
+  ss.getSheetByName(SHEETS.CONFIG).getRange(5, 2).setNumberFormat('dd/MM/yyyy');
+}
+
+
+/* ================================================================
+   Auth.gs
+   ================================================================ */
+
+/**
+ * Auth.gs — Login por PIN y sesión por token firmado. Independiente del nivel
+ * de acceso de Google del Web App: aunque el deploy sea anónimo, sin PIN válido
+ * no se hace nada.
+ *
+ * USUARIOS: NOMBRE | PIN_HASH (formato salt$hash) | ACTIVO. El token identifica
+ * al usuario para la trazabilidad (quién registró/congeló cada cosa).
+ */
+
+var TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
+var HASH_ITER = 10000;
+var PROP_SECRET = 'TOKEN_SECRET';
+
+/* ----------------------------- Hash de PIN ----------------------------- */
+
+function hashPin_(pin) {
+  var salt = Utilities.getUuid().replace(/-/g, '');
+  return salt + '$' + _hashConSalt_(String(pin), salt);
+}
+
+function verifyPin_(pin, almacenado) {
+  if (!almacenado || String(almacenado).indexOf('$') < 0) return false;
+  var parts = String(almacenado).split('$');
+  var salt = parts[0];
+  var esperado = parts[1];
+  return _hashConSalt_(String(pin), salt) === esperado;
+}
+
+function _hashConSalt_(pin, salt) {
+  var v = salt + '|' + pin;
+  for (var i = 0; i < HASH_ITER; i++) {
+    var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + v);
+    v = _bytesAHex_(bytes);
+  }
+  return v;
+}
+
+function _bytesAHex_(bytes) {
+  var s = '';
+  for (var i = 0; i < bytes.length; i++) {
+    var b = (bytes[i] + 256) % 256;
+    s += (b < 16 ? '0' : '') + b.toString(16);
+  }
+  return s;
+}
+
+/* ----------------------------- Token ----------------------------- */
+
+function getSecret_() {
+  var props = PropertiesService.getScriptProperties();
+  var s = props.getProperty(PROP_SECRET);
+  if (!s) {
+    s = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty(PROP_SECRET, s);
+  }
+  return s;
+}
+
+function emitirToken_(nombre) {
+  var payload = { u: nombre, exp: Date.now() + TOKEN_TTL_MS };
+  var b64 = Utilities.base64EncodeWebSafe(JSON.stringify(payload));
+  return b64 + '.' + _firmar_(b64);
+}
+
+function _firmar_(b64) {
+  var sig = Utilities.computeHmacSha256Signature(b64, getSecret_());
+  return Utilities.base64EncodeWebSafe(sig);
+}
+
+/** Valida el token; devuelve { nombre } o lanza. */
+function validarToken_(token) {
+  if (!token || String(token).indexOf('.') < 0) throw new Error('Sesión inválida. Volvé a entrar.');
+  var parts = String(token).split('.');
+  var b64 = parts[0];
+  var sig = parts[1];
+  if (_firmar_(b64) !== sig) throw new Error('Sesión inválida. Volvé a entrar.');
+  var payload = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(b64)).getDataAsString());
+  if (!payload.exp || Date.now() > payload.exp) throw new Error('Tu sesión venció. Volvé a entrar.');
+  return { nombre: payload.u };
+}
+
+/* ----------------------------- Login ----------------------------- */
+
+/** Valida nombre + PIN contra USUARIOS y devuelve un token. */
+function loginConPin_(nombre, pin) {
+  var objetivo = normalizar_(nombre);
+  var data = leerObjetos_(SHEETS.USUARIOS);
+  for (var i = 0; i < data.filas.length; i++) {
+    var f = data.filas[i];
+    if (normalizar_(f[U.NOMBRE]) === objetivo && esSi_(f[U.ACTIVO])) {
+      if (verifyPin_(pin, f[U.PIN])) {
+        return { ok: true, token: emitirToken_(f[U.NOMBRE]), nombre: f[U.NOMBRE] };
+      }
+      break;
+    }
+  }
+  throw new Error('Nombre o PIN incorrecto.');
+}
+
+/** Lista de nombres activos para poblar el selector de login. */
+function listarNombresLogin_() {
+  var data = leerObjetos_(SHEETS.USUARIOS);
+  return data.filas
+    .filter(function (f) { return esSi_(f[U.ACTIVO]); })
+    .map(function (f) { return f[U.NOMBRE]; });
+}
+
+/* ------------------------- Gestión de usuarios ------------------------- */
+
+function crearUsuario_(nombre, pin) {
+  if (!nombre || !/^\d{4}$/.test(String(pin))) {
+    throw new Error('Nombre y PIN de 4 dígitos son obligatorios.');
+  }
+  var existentes = leerObjetos_(SHEETS.USUARIOS);
+  var objetivo = normalizar_(nombre);
+  for (var i = 0; i < existentes.filas.length; i++) {
+    if (normalizar_(existentes.filas[i][U.NOMBRE]) === objetivo) {
+      throw new Error('Ya existe un usuario con ese nombre.');
+    }
+  }
+  appendFilaPorHeader_(SHEETS.USUARIOS, {
+    'NOMBRE': nombre, 'PIN_HASH': hashPin_(pin), 'ACTIVO': 'SÍ'
+  });
+  return { ok: true };
+}
+
+function cambiarPin_(nombre, pinNuevo) {
+  if (!/^\d{4}$/.test(String(pinNuevo))) throw new Error('El PIN debe tener 4 dígitos.');
+  var data = leerObjetos_(SHEETS.USUARIOS);
+  var colPin = colPorHeader_(data.headers, U.PIN);
+  for (var i = 0; i < data.filas.length; i++) {
+    if (normalizar_(data.filas[i][U.NOMBRE]) === normalizar_(nombre)) {
+      data.hoja.getRange(data.indiceFila[i], colPin).setValue(hashPin_(pinNuevo));
+      return { ok: true };
+    }
+  }
+  throw new Error('Usuario no encontrado.');
+}
+
+
+/* ================================================================
+   Personal.gs
+   ================================================================ */
+
+/**
+ * Personal.gs — PERSONAL es la fuente de verdad del padrón. Una fila por
+ * operario. La baja es ACTIVO=NO (nunca se borra la fila, el talle y el
+ * historial quedan atados al legajo para siempre).
+ *
+ * Los talles solo se cargan/editan a mano (acá, vía la app, o en la hoja).
+ * Ninguna función automática los toca: el cruce con RRHH no escribe estas
+ * columnas.
+ */
+
+/** Lee PERSONAL como lista de objetos + índice por legajo. */
+function leerPersonal_() {
+  var data = leerObjetos_(SHEETS.PERSONAL);
+  var porLegajo = {};
+  for (var i = 0; i < data.filas.length; i++) {
+    porLegajo[claveLegajo_(data.filas[i][P.LEGAJO])] = {
+      obj: data.filas[i], fila: data.indiceFila[i]
+    };
+  }
+  data.porLegajo = porLegajo;
+  return data;
+}
+
+/** Operarios, opcionalmente solo activos. Devuelve objetos planos. */
+function listarPersonal_(soloActivos) {
+  var data = leerPersonal_();
+  return data.filas.filter(function (f) {
+    return soloActivos ? esSi_(f[P.ACTIVO]) : true;
+  });
+}
+
+function buscarOperario_(legajo) {
+  var data = leerPersonal_();
+  var hit = data.porLegajo[claveLegajo_(legajo)];
+  return hit ? hit.obj : null;
+}
+
+/** Datos que necesita el formulario de entrega (autocompletar). */
+function datosOperarioParaEntrega_(legajo) {
+  var op = buscarOperario_(legajo);
+  if (!op) throw new Error('No existe el legajo ' + legajo + ' en PERSONAL.');
+  return {
+    legajo: op[P.LEGAJO],
+    nombre: op[P.NOMBRE],
+    activo: esSi_(op[P.ACTIVO]),
+    talles: {
+      PANTALON: op[P.TALLE_PANT], CAMISA: op[P.TALLE_CAM], BOTIN: op[P.TALLE_BOTIN]
+    },
+    grupos: { color: op[P.COLOR], tipoBotin: op[P.TIPO_BOTIN] }
+  };
+}
+
+/** Alta de operario. El talle puede venir vacío (queda SIN DATO). */
+function crearOperario_(datos) {
+  var legajo = String(datos.legajo || '').trim();
+  if (!legajo) throw new Error('El legajo es obligatorio.');
+  if (buscarOperario_(legajo)) throw new Error('Ya existe el legajo ' + legajo + '.');
+  appendFilaPorHeader_(SHEETS.PERSONAL, {
+    'LEGAJO': legajo,
+    'APELLIDO Y NOMBRE': datos.nombre || '',
+    'CATEGORÍA': datos.categoria || '',
+    'CENTRO DE COSTO': datos.centro || '',
+    'COLOR ROPA': datos.color || '',
+    'TIPO BOTÍN': datos.tipoBotin || '',
+    'TALLE PANT': datos.tallePant || '',
+    'TALLE CAM': datos.talleCam || '',
+    'TALLE BOTÍN': datos.talleBotin || '',
+    'ACTIVO': datos.activo === false ? 'NO' : 'SÍ',
+    'OBSERVACIONES': datos.observaciones || ''
+  });
+  return { ok: true, legajo: legajo };
+}
+
+/**
+ * Actualiza campos de un operario (edición manual por la app). Solo escribe
+ * los campos presentes en `datos`; el resto queda intacto.
+ */
+function actualizarOperario_(legajo, datos) {
+  var data = leerPersonal_();
+  var hit = data.porLegajo[claveLegajo_(legajo)];
+  if (!hit) throw new Error('No existe el legajo ' + legajo + '.');
+  var mapa = {
+    nombre: P.NOMBRE, categoria: P.CATEGORIA, centro: P.CENTRO, color: P.COLOR,
+    tipoBotin: P.TIPO_BOTIN, tallePant: P.TALLE_PANT, talleCam: P.TALLE_CAM,
+    talleBotin: P.TALLE_BOTIN, observaciones: P.OBS
+  };
+  Object.keys(mapa).forEach(function (k) {
+    if (k in datos) {
+      var col = colPorHeader_(data.headers, mapa[k]);
+      if (col) data.hoja.getRange(hit.fila, col).setValue(datos[k]);
+    }
+  });
+  return { ok: true };
+}
+
+/** Da de baja (ACTIVO=NO) o de alta (ACTIVO=SÍ) sin tocar el resto. */
+function setActivoOperario_(legajo, activo) {
+  var data = leerPersonal_();
+  var hit = data.porLegajo[claveLegajo_(legajo)];
+  if (!hit) throw new Error('No existe el legajo ' + legajo + '.');
+  var col = colPorHeader_(data.headers, P.ACTIVO);
+  data.hoja.getRange(hit.fila, col).setValue(activo ? 'SÍ' : 'NO');
+  return { ok: true, legajo: legajo, activo: !!activo };
+}
+
+
+/* ================================================================
+   Entregas.gs
+   ================================================================ */
+
+/**
+ * Entregas.gs — ENTREGAS es un log append-only. Cada fila = una prenda
+ * entregada a un operario. Registrar una entrega reinicia el reloj de esa
+ * prenda (sea CICLO o ROTURA: la rotura es un reinicio completo).
+ *
+ * NINGUNA función edita ni borra filas de ENTREGAS.
+ */
+
+/** Todas las entregas como objetos, con FECHA ya como Date. */
+function leerEntregas_() {
+  var data = leerObjetos_(SHEETS.ENTREGAS);
+  data.filas.forEach(function (f) { f._fecha = aFecha_(f[E.FECHA]); });
+  return data;
+}
+
+/**
+ * Mapa { claveLegajo: { PANTALON: Date|null, CAMISA: ..., BOTIN: ... } } con la
+ * ÚLTIMA entrega de cada prenda. Ese es el reloj de cada prenda.
+ */
+function ultimaEntregaPorPrenda_() {
+  var data = leerEntregas_();
+  var mapa = {};
+  data.filas.forEach(function (f) {
+    var leg = claveLegajo_(f[E.LEGAJO]);
+    var prenda = String(f[E.PRENDA] || '').toUpperCase();
+    var fecha = f._fecha;
+    if (!leg || PRENDAS.indexOf(prenda) < 0 || !fecha) return;
+    if (!mapa[leg]) mapa[leg] = { PANTALON: null, CAMISA: null, BOTIN: null };
+    if (!mapa[leg][prenda] || fecha.getTime() > mapa[leg][prenda].getTime()) {
+      mapa[leg][prenda] = fecha;
+    }
+  });
+  return mapa;
+}
+
+/**
+ * Registra una entrega (una o varias prendas de una persona, en un paso).
+ * datos = {
+ *   legajo, fecha (Date|string), motivo ('CICLO'|'ROTURA'|'CICLO INICIAL'),
+ *   observaciones,
+ *   items: [{ prenda:'PANTALON'|'CAMISA'|'BOTIN', talle?, observaciones? }]
+ * }
+ * Si no se pasa talle, se toma el de PERSONAL.
+ */
+function registrarEntrega_(datos) {
+  var op = buscarOperario_(datos.legajo);
+  if (!op) throw new Error('No existe el legajo ' + datos.legajo + ' en PERSONAL.');
+
+  var fecha = aFecha_(datos.fecha) || hoy_();
+  var motivo = String(datos.motivo || 'CICLO').toUpperCase();
+  if (MOTIVOS.indexOf(motivo) < 0) throw new Error('Motivo inválido: ' + motivo);
+
+  var items = datos.items || [];
+  if (!items.length) throw new Error('No se eligió ninguna prenda para entregar.');
+
+  var nombre = op[P.NOMBRE];
+  var registradas = [];
+  items.forEach(function (it) {
+    var prenda = String(it.prenda || '').toUpperCase();
+    if (PRENDAS.indexOf(prenda) < 0) throw new Error('Prenda inválida: ' + it.prenda);
+    var talle = (it.talle !== undefined && it.talle !== '') ? it.talle : op[talleHeaderDePrenda_(prenda)];
+    appendFilaPorHeader_(SHEETS.ENTREGAS, {
+      'FECHA': fecha,
+      'LEGAJO': op[P.LEGAJO],
+      'APELLIDO Y NOMBRE': nombre,
+      'PRENDA': prenda,
+      'TALLE': talle || '',
+      'MOTIVO': motivo,
+      'OBSERVACIONES': it.observaciones || datos.observaciones || ''
+    });
+    registradas.push(prenda);
+  });
+
+  return { ok: true, legajo: op[P.LEGAJO], prendas: registradas, fecha: fmtFecha_(fecha) };
+}
+
+
+/* ================================================================
+   Calculo.gs
+   ================================================================ */
+
+/**
+ * Calculo.gs — Motor central. Aplica las reglas de negocio (4, 5, 6) para
+ * decidir qué prenda entra a una corrida y con qué estado. Lo comparten
+ * "Calcular corrida" (fecha objetivo = corrida) y "Generar previsión"
+ * (fecha objetivo = hoy + dias_prevision).
+ *
+ * Reglas implementadas exactamente:
+ *  - Entra si meses_uso(fecha_objetivo) >= vida_util.
+ *  - INNEGOCIABLE si meses_uso(hoy) >= vida_util (postergar una corrida lo
+ *    llevaría a vida_util + cadencia = techo).
+ *  - CRÍTICO si es innegociable o meses_uso(objetivo) >= techo.
+ *  - SIN DATO si la prenda nunca se entregó.
+ */
+
+/** Fecha de la corrida de grilla más cercana a `fecha` (default hoy). */
+function corridaMasCercana_(fecha) {
+  var ref = fecha || hoy_();
+  var ancla = getFechaAncla_();
+  var cad = getCadenciaMeses_();
+  var difMeses = difMesesCalendario_(ancla, ref);
+  var k = Math.round(difMeses / cad);
+  return sumarMeses_(ancla, k * cad);
+}
+
+/**
+ * Evalúa todo el padrón activo (3 prendas c/u) a una fecha objetivo.
+ * Devuelve solo las prendas que ENTRAN (incluye SIN DATO). Cada registro es
+ * un objeto plano listo para la UI.
+ */
+function evaluarPadron_(fechaObjetivo, hoy) {
+  var vida = getVidaUtilMeses_();
+  var techo = getTechoMeses_();
+  var relojes = ultimaEntregaPorPrenda_();
+  var activos = listarPersonal_(true);
+  var out = [];
+
+  activos.forEach(function (op) {
+    var leg = claveLegajo_(op[P.LEGAJO]);
+    var reloj = relojes[leg] || {};
+    PRENDAS.forEach(function (prenda) {
+      var rec = evaluarPrenda_(op, prenda, reloj[prenda] || null,
+        fechaObjetivo, hoy, vida, techo);
+      if (rec) out.push(rec);
+    });
+  });
+
+  // Orden: críticos/innegociables primero, luego por meses de uso desc.
+  out.sort(function (a, b) {
+    var pa = rankEstado_(a), pb = rankEstado_(b);
+    if (pa !== pb) return pa - pb;
+    return (b.mesesUso || 0) - (a.mesesUso || 0);
+  });
+  return out;
+}
+
+function rankEstado_(r) {
+  if (r.estado === 'CRITICO') return 0;
+  if (r.estado === 'ELEGIBLE') return 1;
+  return 2; // SIN DATO
+}
+
+/** Evalúa una prenda de un operario. Devuelve el registro o null si no entra. */
+function evaluarPrenda_(op, prenda, ultimaFecha, fechaObjetivo, hoy, vida, techo) {
+  var talle = op[talleHeaderDePrenda_(prenda)];
+  var grupo = op[grupoHeaderDePrenda_(prenda)];
+  var base = {
+    legajo: op[P.LEGAJO],
+    nombre: op[P.NOMBRE],
+    centro: op[P.CENTRO],
+    categoria: op[P.CATEGORIA],
+    prenda: prenda,
+    grupo: grupo || '',
+    talle: (talle === null || talle === undefined) ? '' : String(talle),
+    faltaTalle: !(talle !== null && talle !== undefined && String(talle).trim())
+  };
+
+  if (!ultimaFecha) {
+    // Nunca recibió esta prenda: entra, pero es SIN DATO.
+    base.ultimaEntrega = '';
+    base.mesesUso = null;
+    base.mesesHoy = null;
+    base.estado = 'SIN DATO';
+    base.innegociable = false;
+    return base;
+  }
+
+  var mesesObj = mesesEntre_(ultimaFecha, fechaObjetivo);
+  var mesesHoy = mesesEntre_(ultimaFecha, hoy);
+  if (mesesObj < vida) return null; // no entra todavía
+
+  var innegociable = mesesHoy >= vida;
+  base.ultimaEntrega = fmtFecha_(ultimaFecha);
+  base.mesesUso = Math.round(mesesObj * 10) / 10;
+  base.mesesHoy = Math.round(mesesHoy * 10) / 10;
+  base.innegociable = innegociable;
+  base.estado = (innegociable || mesesObj >= techo) ? 'CRITICO' : 'ELEGIBLE';
+  return base;
+}
+
+
+/* ================================================================
+   Corrida.gs
+   ================================================================ */
+
+/**
+ * Corrida.gs — Vistas calculadas que se muestran en la web app (no son hojas):
+ *  - calcularCorrida: qué corresponde AHORA, a la fecha de la corrida más
+ *    cercana a hoy.
+ *  - generarPrevision: qué va a corresponder a hoy + dias_prevision, para
+ *    asegurar el fondo con anticipación.
+ */
+
+/** PENDIENTES: prendas que entran en la corrida actual. */
+function calcularCorrida_() {
+  var hoy = hoy_();
+  var corrida = corridaMasCercana_(hoy);
+  var filas = evaluarPadron_(corrida, hoy);
+  return {
+    titulo: 'Corrida ' + fmtFecha_(corrida),
+    fechaCorrida: fmtFecha_(corrida),
+    fechaObjetivo: fmtFecha_(corrida),
+    filas: filas,
+    resumen: resumir_(filas)
+  };
+}
+
+/** PREVISIÓN: prendas que cruzarán la vida útil a hoy + dias_prevision. */
+function generarPrevision_() {
+  var hoy = hoy_();
+  var dias = getDiasPrevision_();
+  var objetivo = new Date(hoy.getTime() + dias * MS_DIA);
+  var filas = evaluarPadron_(objetivo, hoy);
+  return {
+    titulo: 'Previsión a ' + dias + ' días (' + fmtFecha_(objetivo) + ')',
+    fechaObjetivo: fmtFecha_(objetivo),
+    dias: dias,
+    filas: filas,
+    resumen: resumir_(filas)
+  };
+}
+
+function resumir_(filas) {
+  var r = { total: filas.length, criticos: 0, elegibles: 0, sinDato: 0, innegociables: 0, faltaTalle: 0 };
+  filas.forEach(function (f) {
+    if (f.estado === 'CRITICO') r.criticos++;
+    else if (f.estado === 'ELEGIBLE') r.elegibles++;
+    else r.sinDato++;
+    if (f.innegociable) r.innegociables++;
+    if (f.faltaTalle) r.faltaTalle++;
+  });
+  return r;
+}
+
+
+/* ================================================================
+   Pedido.gs
+   ================================================================ */
+
+/**
+ * Pedido.gs — Arma el desglose para el proveedor a partir de la corrida
+ * actual. Agrega las prendas que entran en matrices (talle x grupo),
+ * excluyendo las que el usuario marcó como "no entregar" y las SIN DATO sin
+ * talle. Suma totales y valoriza contra PROVEEDORES.
+ *
+ * exclusiones: lista de claves "LEGAJO|PRENDA" a dejar afuera (lo que el
+ * usuario marcó como no entregado en la pantalla de la corrida).
+ */
+function armarPedido_(exclusiones) {
+  var corrida = calcularCorrida_();
+  var excl = {};
+  (exclusiones || []).forEach(function (k) { excl[String(k).toUpperCase()] = true; });
+
+  var incluidas = [], excluidas = [], sinTalle = [];
+  corrida.filas.forEach(function (f) {
+    var clave = claveLegajo_(f.legajo) + '|' + f.prenda;
+    if (excl[clave]) { excluidas.push(f); return; }
+    if (f.faltaTalle) { sinTalle.push(f); return; }
+    incluidas.push(f);
+  });
+
+  var matrices = {}, totales = { unidades: 0 };
+  PRENDAS.forEach(function (prenda) {
+    var rows = incluidas.filter(function (f) { return f.prenda === prenda; });
+    var m = matrizPrenda_(rows);
+    matrices[prenda] = m;
+    totales[prenda] = m.total;
+    totales.unidades += m.total;
+  });
+
+  return {
+    fechaCorrida: corrida.fechaCorrida,
+    matrices: matrices,
+    totales: totales,
+    incluidas: incluidas,
+    excluidas: excluidas,
+    sinTalle: sinTalle,
+    proveedores: valorizarPedido_(totales)
+  };
+}
+
+/** Construye la matriz talle x grupo (con totales) de una prenda. */
+function matrizPrenda_(rows) {
+  var tallesSet = {}, gruposSet = {}, celdas = {};
+  var total = 0;
+  rows.forEach(function (f) {
+    var t = String(f.talle || '(sin talle)');
+    var g = String(f.grupo || '(sin grupo)');
+    tallesSet[t] = true; gruposSet[g] = true;
+    if (!celdas[t]) celdas[t] = {};
+    celdas[t][g] = (celdas[t][g] || 0) + 1;
+    total++;
+  });
+
+  var talles = Object.keys(tallesSet).sort(cmpTalle_);
+  var grupos = Object.keys(gruposSet).sort();
+
+  var totalPorGrupo = {}, totalPorTalle = {};
+  grupos.forEach(function (g) { totalPorGrupo[g] = 0; });
+  talles.forEach(function (t) {
+    totalPorTalle[t] = 0;
+    grupos.forEach(function (g) {
+      var n = (celdas[t] && celdas[t][g]) || 0;
+      totalPorTalle[t] += n;
+      totalPorGrupo[g] += n;
+    });
+  });
+
+  return {
+    talles: talles, grupos: grupos, celdas: celdas,
+    totalPorGrupo: totalPorGrupo, totalPorTalle: totalPorTalle, total: total
+  };
+}
+
+/** Orden de talles: numérico si se puede, si no alfabético (S<M<L<XL...). */
+function cmpTalle_(a, b) {
+  var na = Number(a), nb = Number(b);
+  if (isFinite(na) && isFinite(nb)) return na - nb;
+  var orden = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+  var ia = orden.indexOf(String(a).toUpperCase());
+  var ib = orden.indexOf(String(b).toUpperCase());
+  if (ia >= 0 && ib >= 0) return ia - ib;
+  return String(a).localeCompare(String(b));
+}
+
+
+/* ================================================================
+   Proveedores.gs
+   ================================================================ */
+
+/**
+ * Proveedores.gs — Comparación de precios (hasta 5 proveedores). El precio es
+ * por tipo de prenda (no varía por color ni talle).
+ *
+ *  - Total todo-o-nada por proveedor: valoriza el pedido completo con sus
+ *    precios. Si no cotiza una prenda que el pedido necesita, queda incompleto
+ *    (no se inventa un total).
+ *  - Ganador = menor total completo (criterio: comprar todo a un proveedor).
+ *  - Split informativo: cada prenda al más barato. Solo informa el ahorro vs.
+ *    el ganador; NO parte el pedido.
+ */
+function valorizarPedido_(totales) {
+  var precios = leerPreciosProveedores_();
+  var necesarias = PRENDAS.filter(function (p) { return (totales[p] || 0) > 0; });
+
+  var hayPrecios = precios.proveedores.some(function (prov) {
+    return PRENDAS.some(function (p) { return prov.precios[p] !== null; });
+  });
+  if (!hayPrecios || necesarias.length === 0) {
+    return { hayPrecios: hayPrecios, proveedores: [], ganador: null, split: null };
+  }
+
+  var evaluados = precios.proveedores.map(function (prov) {
+    var faltan = [], detalle = {}, total = 0, completo = true;
+    necesarias.forEach(function (p) {
+      var precio = prov.precios[p];
+      if (precio === null) { faltan.push(p); completo = false; return; }
+      var sub = precio * totales[p];
+      detalle[p] = { precio: precio, subtotal: sub };
+      total += sub;
+    });
+    return {
+      nombre: prov.nombre,
+      completo: completo,
+      total: completo ? total : null,
+      faltan: faltan,
+      detalle: detalle
+    };
+  });
+
+  var ganador = null;
+  evaluados.forEach(function (e) {
+    if (e.completo && (ganador === null || e.total < ganador.total)) {
+      ganador = { nombre: e.nombre, total: e.total };
+    }
+  });
+
+  var split = calcularSplit_(necesarias, totales, precios.proveedores, ganador);
+
+  return { hayPrecios: true, proveedores: evaluados, ganador: ganador, split: split };
+}
+
+/** Costo con cada prenda al proveedor más barato (solo informativo). */
+function calcularSplit_(necesarias, totales, proveedores, ganador) {
+  var porPrenda = {}, total = 0, completo = true;
+  necesarias.forEach(function (p) {
+    var mejor = null;
+    proveedores.forEach(function (prov) {
+      var precio = prov.precios[p];
+      if (precio !== null && (mejor === null || precio < mejor.precio)) {
+        mejor = { proveedor: prov.nombre, precio: precio };
+      }
+    });
+    if (!mejor) { completo = false; return; }
+    var sub = mejor.precio * totales[p];
+    porPrenda[p] = { proveedor: mejor.proveedor, precio: mejor.precio, subtotal: sub };
+    total += sub;
+  });
+  if (!completo) return { completo: false, total: null, porPrenda: porPrenda, ahorro: null };
+  var ahorro = ganador ? (ganador.total - total) : null;
+  return { completo: true, total: total, porPrenda: porPrenda, ahorro: ahorro };
+}
+
+/**
+ * Lee PROVEEDORES: { proveedores: [{ nombre, precios: {PANTALON, CAMISA, BOTIN} }] }.
+ * Los encabezados (col 2 en adelante) son los nombres reales de proveedor.
+ * Celda vacía o no numérica = ese proveedor no cotiza esa prenda (null).
+ */
+function leerPreciosProveedores_() {
+  var sh = requireSheet_(SHEETS.PROVEEDORES);
+  var data = sh.getDataRange().getValues();
+  var headers = data[0] || [];
+  var proveedores = [];
+  for (var c = 1; c < headers.length; c++) {
+    var nombre = String(headers[c] || '').trim();
+    if (!nombre) continue;
+    proveedores.push({ col: c, nombre: nombre, precios: { PANTALON: null, CAMISA: null, BOTIN: null } });
+  }
+  for (var r = 1; r < data.length; r++) {
+    var prenda = String(data[r][0] || '').trim().toUpperCase();
+    if (PRENDAS.indexOf(prenda) < 0) continue;
+    proveedores.forEach(function (prov) {
+      var v = data[r][prov.col];
+      var n = Number(v);
+      prov.precios[prenda] = (v !== '' && v !== null && isFinite(n) && n > 0) ? n : null;
+    });
+  }
+  return { proveedores: proveedores };
+}
+
+
+/* ================================================================
+   CruceRRHH.gs
+   ================================================================ */
+
+/**
+ * CruceRRHH.gs — Compara el listado vigente de RRHH (pegado en la app) contra
+ * PERSONAL y arma tres bloques: BAJAS, ALTAS y COINCIDEN.
+ *
+ * Reglas críticas:
+ *  - El cruce se hace SIEMPRE por LEGAJO, nunca por nombre.
+ *  - El sistema marca y sugiere; NO ejecuta nada solo. Las altas/bajas se
+ *    aplican una por una, solo las que el usuario confirma.
+ *  - El cruce NUNCA toca los talles de PERSONAL.
+ *  - El listado de RRHH trae nombre + legajo + categoría (sin centro de costo).
+ */
+
+/** Cruza el texto pegado contra PERSONAL. */
+function cruzarRRHH_(textoPegado) {
+  var rrhh = parsearListadoRRHH_(textoPegado);
+  var rrhhPorLegajo = {};
+  rrhh.forEach(function (r) { rrhhPorLegajo[claveLegajo_(r.legajo)] = r; });
+
+  var data = leerPersonal_();
+
+  var bajas = [], altas = [], coinciden = [];
+
+  // BAJAS: activos en PERSONAL que no están en el listado de RRHH.
+  data.filas.forEach(function (op) {
+    if (!esSi_(op[P.ACTIVO])) return;
+    var leg = claveLegajo_(op[P.LEGAJO]);
+    if (!rrhhPorLegajo[leg]) {
+      bajas.push({
+        legajo: op[P.LEGAJO], nombre: op[P.NOMBRE], categoria: op[P.CATEGORIA],
+        talles: op[P.TALLE_PANT] + ' / ' + op[P.TALLE_CAM] + ' / ' + op[P.TALLE_BOTIN]
+      });
+    }
+  });
+
+  // ALTAS y COINCIDEN: recorro el listado de RRHH.
+  rrhh.forEach(function (r) {
+    var hit = data.porLegajo[claveLegajo_(r.legajo)];
+    if (!hit) {
+      altas.push({ legajo: r.legajo, nombre: r.nombre, categoria: r.categoria, motivo: 'NUEVO', sinTalle: true });
+    } else if (!esSi_(hit.obj[P.ACTIVO])) {
+      altas.push({
+        legajo: r.legajo, nombre: hit.obj[P.NOMBRE] || r.nombre,
+        categoria: r.categoria || hit.obj[P.CATEGORIA], motivo: 'REINGRESO',
+        sinTalle: false,
+        talleGuardado: hit.obj[P.TALLE_PANT] + ' / ' + hit.obj[P.TALLE_CAM] + ' / ' + hit.obj[P.TALLE_BOTIN]
+      });
+    } else {
+      var catPersonal = String(hit.obj[P.CATEGORIA] || '').trim();
+      var catRRHH = String(r.categoria || '').trim();
+      var difCategoria = catRRHH !== '' && normalizar_(catRRHH) !== normalizar_(catPersonal);
+      coinciden.push({
+        legajo: r.legajo, nombre: hit.obj[P.NOMBRE],
+        categoriaPersonal: catPersonal, categoriaRRHH: catRRHH, difCategoria: difCategoria
+      });
+    }
+  });
+
+  return {
+    bajas: bajas, altas: altas, coinciden: coinciden,
+    resumen: { bajas: bajas.length, altas: altas.length, coinciden: coinciden.length, leidos: rrhh.length }
+  };
+}
+
+/**
+ * Parsea el texto pegado. Soporta columnas separadas por tab (copia de Excel)
+ * o por ';', en orden LEGAJO, NOMBRE, CATEGORÍA. Si una línea no tiene
+ * separador, toma el primer token como legajo y el resto como nombre.
+ */
+function parsearListadoRRHH_(texto) {
+  var out = [];
+  if (!texto) return out;
+  var lineas = String(texto).split(/\r?\n/);
+  for (var i = 0; i < lineas.length; i++) {
+    var linea = lineas[i];
+    if (!linea || !linea.trim()) continue;
+    var partes;
+    if (linea.indexOf('\t') >= 0) {
+      partes = linea.split('\t');
+    } else if (linea.indexOf(';') >= 0) {
+      partes = linea.split(';');
+    } else {
+      var m = linea.match(/^(\S+)\s+(.*)$/);
+      partes = m ? [m[1], m[2], ''] : [linea.trim()];
+    }
+    var legajo = String(partes[0] || '').trim();
+    var nombre = String(partes[1] || '').trim();
+    var categoria = String(partes[2] || '').trim();
+    if (!legajo) continue;
+    if (normalizar_(legajo) === 'LEGAJO') continue; // saltear encabezado
+    out.push({ legajo: legajo, nombre: nombre, categoria: categoria });
+  }
+  return out;
+}
+
+/**
+ * Aplica las acciones que el usuario confirmó, una por una. NUNCA toca talles.
+ * cambios = [{ legajo, accion:'DAR DE BAJA'|'DAR DE ALTA'|'IGNORAR', nombre?, categoria? }]
+ */
+function aplicarCambiosCruce_(cambios) {
+  var resultados = [];
+  (cambios || []).forEach(function (c) {
+    var accion = normalizar_(c.accion);
+    try {
+      if (accion === 'DAR DE BAJA') {
+        setActivoOperario_(c.legajo, false);
+        resultados.push({ legajo: c.legajo, accion: 'BAJA', ok: true });
+      } else if (accion === 'DAR DE ALTA') {
+        var existe = buscarOperario_(c.legajo);
+        if (existe) {
+          setActivoOperario_(c.legajo, true); // reingreso: talle intacto
+          resultados.push({ legajo: c.legajo, accion: 'REINGRESO', ok: true });
+        } else {
+          crearOperario_({ legajo: c.legajo, nombre: c.nombre || '', categoria: c.categoria || '', activo: true });
+          resultados.push({ legajo: c.legajo, accion: 'ALTA', ok: true });
+        }
+      } else {
+        resultados.push({ legajo: c.legajo, accion: 'IGNORADO', ok: true });
+      }
+    } catch (e) {
+      resultados.push({ legajo: c.legajo, accion: accion, ok: false, error: e.message });
+    }
+  });
+  return { ok: true, resultados: resultados };
+}
+
+
+/* ================================================================
+   Historial.gs
+   ================================================================ */
+
+/**
+ * Historial.gs — "Congelar compra" toma la corrida actual (con las exclusiones
+ * que el usuario marcó), arma el pedido y lo guarda como un registro inmutable
+ * en HISTORIAL_COMPRAS: la foto de qué se compró en esta corrida.
+ *
+ * Congelar NO toca ENTREGAS ni PERSONAL. Es solo dejar constancia. La entrega
+ * efectiva (que reinicia el reloj) se registra aparte, cuando la ropa llega.
+ */
+
+/** Congela la compra de la corrida actual. Devuelve el registro guardado. */
+function congelarCompra_(usuario, exclusiones) {
+  var pedido = armarPedido_(exclusiones);
+  if (!pedido.totales.unidades) {
+    throw new Error('No hay unidades para congelar en esta corrida.');
+  }
+  var id = nuevoIdCorrida_();
+  var ganador = (pedido.proveedores && pedido.proveedores.ganador) || null;
+
+  var fila = {
+    'ID_CORRIDA': id,
+    'FECHA_CORRIDA': pedido.fechaCorrida || '',
+    'FECHA_CONGELADO': fmtFecha_(hoy_()),
+    'USUARIO': usuario || '',
+    'TOTAL_PANTALON': pedido.totales.PANTALON || 0,
+    'TOTAL_CAMISA': pedido.totales.CAMISA || 0,
+    'TOTAL_BOTIN': pedido.totales.BOTIN || 0,
+    'TOTAL_UNIDADES': pedido.totales.unidades || 0,
+    'PROVEEDOR_GANADOR': ganador ? ganador.nombre : '',
+    'COSTO_GANADOR': ganador ? ganador.total : '',
+    'DETALLE_JSON': JSON.stringify(resumenParaHistorial_(pedido))
+  };
+  appendFilaPorHeader_(SHEETS.HISTORIAL, fila);
+
+  return {
+    ok: true,
+    id: id,
+    fechaCorrida: fila.FECHA_CORRIDA,
+    totales: pedido.totales,
+    proveedorGanador: fila.PROVEEDOR_GANADOR,
+    costoGanador: fila.COSTO_GANADOR
+  };
+}
+
+/** ID único y legible de corrida: CORR-yyyyMMdd-HHmmss. */
+function nuevoIdCorrida_() {
+  var tz = Session.getScriptTimeZone() || 'America/Argentina/Tucuman';
+  return 'CORR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd-HHmmss');
+}
+
+/** Reduce el pedido a lo esencial para guardar como JSON (no toda la corrida). */
+function resumenParaHistorial_(pedido) {
+  return {
+    fechaCorrida: pedido.fechaCorrida,
+    totales: pedido.totales,
+    matrices: pedido.matrices,
+    proveedores: pedido.proveedores,
+    incluidas: (pedido.incluidas || []).map(filaResumenHistorial_),
+    excluidas: (pedido.excluidas || []).map(filaResumenHistorial_),
+    sinTalle: (pedido.sinTalle || []).map(filaResumenHistorial_)
+  };
+}
+
+function filaResumenHistorial_(f) {
+  return {
+    legajo: f.legajo, nombre: f.nombre, prenda: f.prenda,
+    talle: f.talle, grupo: f.grupo, estado: f.estado
+  };
+}
+
+/** Lista el historial de compras congeladas, más nuevo primero. */
+function listarHistorial_() {
+  var data = leerObjetos_(SHEETS.HISTORIAL);
+  var filas = data.filas.map(function (f) {
+    return {
+      id: f.ID_CORRIDA,
+      fechaCorrida: f.FECHA_CORRIDA,
+      fechaCongelado: f.FECHA_CONGELADO,
+      usuario: f.USUARIO,
+      totalPantalon: Number(f.TOTAL_PANTALON) || 0,
+      totalCamisa: Number(f.TOTAL_CAMISA) || 0,
+      totalBotin: Number(f.TOTAL_BOTIN) || 0,
+      totalUnidades: Number(f.TOTAL_UNIDADES) || 0,
+      proveedorGanador: f.PROVEEDOR_GANADOR,
+      costoGanador: f.COSTO_GANADOR === '' || f.COSTO_GANADOR === null ? null : Number(f.COSTO_GANADOR)
+    };
+  });
+  filas.reverse(); // append-only: el último escrito es el más nuevo
+  return filas;
+}
+
+/** Detalle completo (DETALLE_JSON parseado) de una corrida del historial. */
+function detalleHistorial_(idCorrida) {
+  var data = leerObjetos_(SHEETS.HISTORIAL);
+  var hit = null;
+  data.filas.forEach(function (f) {
+    if (String(f.ID_CORRIDA) === String(idCorrida)) hit = f;
+  });
+  if (!hit) throw new Error('No existe la corrida ' + idCorrida + ' en el historial.');
+  var detalle = {};
+  try { detalle = JSON.parse(hit.DETALLE_JSON || '{}'); } catch (e) { detalle = {}; }
+  return {
+    id: hit.ID_CORRIDA,
+    fechaCorrida: hit.FECHA_CORRIDA,
+    fechaCongelado: hit.FECHA_CONGELADO,
+    usuario: hit.USUARIO,
+    detalle: detalle
+  };
+}
+
+
+/* ================================================================
+   Roturas.gs
+   ================================================================ */
+
+/**
+ * Roturas.gs — Reporte de roturas. Recorre el log de ENTREGAS, toma cada
+ * entrega con MOTIVO = ROTURA y calcula la "edad" de la prenda al romperse
+ * (meses entre la entrega anterior de esa misma prenda y la rotura).
+ *
+ *  - Rotura TARDÍA: la prenda ya estaba vieja al romperse (edad >= vida-cadencia).
+ *    Casi cumplió su vida útil; es desgaste esperable.
+ *  - Rotura TEMPRANA: se rompió bastante antes (edad < vida-cadencia). Es la que
+ *    interesa vigilar: mala calidad o mal uso.
+ *  - SIN REFERENCIA: no hay entrega anterior de esa prenda (no se puede medir edad).
+ *
+ * Agrega por operario y por centro de costo para ver dónde se concentran.
+ */
+
+/** Umbral de meses a partir del cual una rotura se considera "tardía". */
+function umbralRoturaTardia_() {
+  return Math.max(0, getVidaUtilMeses_() - getCadenciaMeses_());
+}
+
+function reporteRoturas_() {
+  var data = leerEntregas_();
+  var personal = leerPersonal_();
+  var umbral = umbralRoturaTardia_();
+
+  // Agrupar entregas por legajo+prenda, ordenadas por fecha ascendente.
+  var grupos = {};
+  data.filas.forEach(function (f) {
+    var leg = claveLegajo_(f[E.LEGAJO]);
+    var prenda = String(f[E.PRENDA] || '').toUpperCase();
+    if (!leg || PRENDAS.indexOf(prenda) < 0 || !f._fecha) return;
+    var k = leg + '|' + prenda;
+    if (!grupos[k]) grupos[k] = [];
+    grupos[k].push(f);
+  });
+  Object.keys(grupos).forEach(function (k) {
+    grupos[k].sort(function (a, b) { return a._fecha.getTime() - b._fecha.getTime(); });
+  });
+
+  // Detectar cada rotura y medir su edad contra la entrega previa.
+  var conFecha = [];
+  Object.keys(grupos).forEach(function (k) {
+    var arr = grupos[k];
+    for (var i = 0; i < arr.length; i++) {
+      var f = arr[i];
+      if (String(f[E.MOTIVO] || '').toUpperCase() !== 'ROTURA') continue;
+      var anterior = i > 0 ? arr[i - 1] : null;
+      var edad = anterior ? Math.round(mesesEntre_(anterior._fecha, f._fecha) * 10) / 10 : null;
+      var tardia = (edad !== null && edad >= umbral);
+      var leg = claveLegajo_(f[E.LEGAJO]);
+      var op = personal.porLegajo[leg];
+      conFecha.push({
+        ts: f._fecha.getTime(),
+        ev: {
+          legajo: f[E.LEGAJO],
+          nombre: f[E.NOMBRE] || (op ? op.obj[P.NOMBRE] : ''),
+          centro: op ? op.obj[P.CENTRO] : '',
+          prenda: String(f[E.PRENDA] || '').toUpperCase(),
+          fecha: fmtFecha_(f._fecha),
+          edadMeses: edad,
+          tardia: tardia,
+          temprana: (edad !== null && !tardia),
+          observaciones: f[E.OBS] || ''
+        }
+      });
+    }
+  });
+
+  conFecha.sort(function (a, b) { return b.ts - a.ts; }); // más recientes primero
+  var eventos = conFecha.map(function (x) { return x.ev; });
+
+  return {
+    resumen: {
+      total: eventos.length,
+      tempranas: contarRoturas_(eventos, 'temprana'),
+      tardias: contarRoturas_(eventos, 'tardia'),
+      sinReferencia: eventos.filter(function (e) { return e.edadMeses === null; }).length,
+      umbralTardiaMeses: umbral
+    },
+    eventos: eventos,
+    porLegajo: agruparRoturas_(eventos, 'legajo'),
+    porCentro: agruparRoturas_(eventos, 'centro')
+  };
+}
+
+function contarRoturas_(eventos, flag) {
+  return eventos.filter(function (e) { return e[flag]; }).length;
+}
+
+/**
+ * Agrupa eventos de rotura por una clave ('legajo' o 'centro'), contando
+ * totales, tempranas/tardías y unidades por prenda. Ordena por total desc.
+ */
+function agruparRoturas_(eventos, claveCampo) {
+  var mapa = {};
+  eventos.forEach(function (ev) {
+    var clave = claveCampo === 'legajo' ? claveLegajo_(ev.legajo)
+                                        : String(ev.centro || '(sin centro)');
+    if (!mapa[clave]) {
+      mapa[clave] = {
+        legajo: claveCampo === 'legajo' ? ev.legajo : undefined,
+        nombre: claveCampo === 'legajo' ? ev.nombre : undefined,
+        centro: ev.centro || '(sin centro)',
+        total: 0, tempranas: 0, tardias: 0,
+        PANTALON: 0, CAMISA: 0, BOTIN: 0
+      };
+    }
+    var r = mapa[clave];
+    r.total++;
+    if (ev.tardia) r.tardias++;
+    else if (ev.temprana) r.tempranas++;
+    if (r[ev.prenda] !== undefined) r[ev.prenda]++;
+  });
+  return Object.keys(mapa).map(function (k) { return mapa[k]; })
+    .sort(function (a, b) { return b.total - a.total; });
+}
+
+
+/* ================================================================
+   Api.gs
+   ================================================================ */
+
+/**
+ * Api.gs — Único punto de entrada desde el frontend. El navegador llama
+ * google.script.run.apiCall(metodo, payloadJson). Acá se valida el token de
+ * sesión (salvo los métodos de pre-login) y se enruta a la función de negocio.
+ *
+ * Todo viaja como JSON string para no pelear con la serialización de
+ * google.script.run (fechas, objetos anidados). La respuesta SIEMPRE es un
+ * JSON { ok:true, data } o { ok:false, error } — el front nunca recibe una
+ * excepción cruda.
+ */
+
+// Métodos que NO requieren token (pantalla de login).
+var METODOS_PUBLICOS = { login: true, listarNombresLogin: true };
+
+function apiCall(metodo, payloadJson) {
+  try {
+    var payload = payloadJson ? JSON.parse(payloadJson) : {};
+    var sesion = null;
+    if (!METODOS_PUBLICOS[metodo]) {
+      sesion = validarToken_(payload.__token || '');
+    }
+    var data = enrutar_(metodo, payload, sesion);
+    return JSON.stringify({ ok: true, data: data === undefined ? null : data });
+  } catch (e) {
+    return JSON.stringify({ ok: false, error: (e && e.message) ? e.message : String(e) });
+  }
+}
+
+function enrutar_(metodo, p, sesion) {
+  var usuario = sesion ? sesion.nombre : '';
+  switch (metodo) {
+    // --- Pre-login ---
+    case 'login': return loginConPin_(p.nombre, p.pin);
+    case 'listarNombresLogin': return listarNombresLogin_();
+
+    // --- Sesión / usuarios ---
+    case 'sesion': return { nombre: usuario };
+    case 'cambiarPin': return cambiarPin_(usuario, p.pinNuevo);
+    case 'crearUsuario': return crearUsuario_(p.nombre, p.pin);
+
+    // --- Config / listas (para poblar selects y rótulos del front) ---
+    case 'getConfig': return configParaUI_();
+    case 'getListas': return getListas_();
+
+    // --- Padrón (PERSONAL) ---
+    case 'listarPersonal': return listarPersonal_(p.soloActivos !== false);
+    case 'datosOperario': return datosOperarioParaEntrega_(p.legajo);
+    case 'crearOperario': return crearOperario_(p.datos || p);
+    case 'actualizarOperario': return actualizarOperario_(p.legajo, p.datos || {});
+    case 'setActivoOperario': return setActivoOperario_(p.legajo, !!p.activo);
+
+    // --- Entregas ---
+    case 'registrarEntrega': return registrarEntrega_(p.datos || p);
+
+    // --- Corrida / previsión ---
+    case 'calcularCorrida': return calcularCorrida_();
+    case 'generarPrevision': return generarPrevision_();
+
+    // --- Pedido / proveedores ---
+    case 'armarPedido': return armarPedido_(p.exclusiones || []);
+
+    // --- Cruce RRHH ---
+    case 'cruzarRRHH': return cruzarRRHH_(p.texto || '');
+    case 'aplicarCambiosCruce': return aplicarCambiosCruce_(p.cambios || []);
+
+    // --- Historial (congelar compra) ---
+    case 'congelarCompra': return congelarCompra_(usuario, p.exclusiones || []);
+    case 'listarHistorial': return listarHistorial_();
+    case 'detalleHistorial': return detalleHistorial_(p.id);
+
+    // --- Roturas ---
+    case 'reporteRoturas': return reporteRoturas_();
+
+    default: throw new Error('Método desconocido: ' + metodo);
+  }
+}
+
+/** Snapshot de parámetros de negocio para que el front muestre rótulos. */
+function configParaUI_() {
+  return {
+    vidaUtil: getVidaUtilMeses_(),
+    cadencia: getCadenciaMeses_(),
+    techo: getTechoMeses_(),
+    diasPrevision: getDiasPrevision_(),
+    fechaAncla: fmtFecha_(getFechaAncla_()),
+    prendas: PRENDAS,
+    motivos: MOTIVOS
+  };
+}
+
+
+/* ================================================================
+   Main.gs
+   ================================================================ */
+
+/**
+ * Main.gs — Entrada del Web App. doGet sirve la SPA (index.html); el resto de
+ * la app vive en los archivos HTML incluidos. Toda la lógica de datos pasa por
+ * apiCall (Api.gs); acá no hay reglas de negocio.
+ */
+
+function doGet() {
+  return HtmlService.createTemplateFromFile('index')
+    .evaluate()
+    .setTitle('INGECO — Compra de Ropa')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setFaviconUrl('https://www.google.com/images/icons/product/sheets-32.png');
+}
+
+/** Permite <?!= include('NombreArchivo') ?> dentro de los HTML. */
+function include(nombre) {
+  return HtmlService.createHtmlOutputFromFile(nombre).getContent();
+}
+
+
+/* ================================================================
+   Seed.gs
+   ================================================================ */
+
+/**
+ * Seed.gs — Carga inicial del padrón desde un Excel/listado. Se corre UNA sola
+ * vez, a mano, desde el editor de Apps Script. NO es parte del flujo normal de
+ * la app.
+ *
+ * Dos formas de usarlo:
+ *   1) Pegá tu Excel en una hoja nueva llamada IMPORTAR dentro de la planilla
+ *      base (con fila de encabezados) y ejecutá  sembrarPadronInicial().
+ *   2) O pasá vos el array 2D (encabezados + filas) a importarPadronDesdeValores().
+ *
+ * Encabezados reconocidos (importa el nombre, no el orden):
+ *   LEGAJO*           — obligatorio
+ *   APELLIDO Y NOMBRE — (o NOMBRE)
+ *   CATEGORIA
+ *   CENTRO DE COSTO   — (o CENTRO / OBRA)
+ *   COLOR ROPA        — (o COLOR)
+ *   TIPO BOTIN
+ *   TALLE PANT        — (o TALLE PANTALON)
+ *   TALLE CAM         — (o TALLE CAMISA)
+ *   TALLE BOTIN
+ *   ULTIMA ENTREGA    — (o FECHA / FECHA ENTREGA) fecha que aplica a las 3 prendas
+ *   FECHA PANT | FECHA CAM | FECHA BOTIN — opcional, fecha por prenda (pisa la anterior)
+ *   OBSERVACIONES
+ *
+ * Reglas:
+ *   - Cada fecha sembrada genera una ENTREGA con motivo 'CICLO INICIAL'.
+ *   - Si una prenda no tiene fecha, queda SIN DATO (no se siembra entrega).
+ *   - Idempotente: si el legajo ya existe en PERSONAL, esa fila se saltea.
+ */
+
+function sembrarPadronInicial() {
+  return importarPadronDesdeHoja_('IMPORTAR');
+}
+
+function importarPadronDesdeHoja_(nombreHoja) {
+  var sh = getSheet_(nombreHoja);
+  if (!sh) {
+    throw new Error('No existe la hoja "' + nombreHoja + '". Pegá ahí tu listado con encabezados y volvé a correr.');
+  }
+  return importarPadronDesdeValores(sh.getDataRange().getValues());
+}
+
+function importarPadronDesdeValores(valores) {
+  if (!valores || valores.length < 2) throw new Error('No hay filas para importar (¿falta el encabezado?).');
+
+  var headers = valores[0].map(function (h) { return normalizar_(h); });
+  var idx = {
+    legajo:   buscarCol_(headers, ['LEGAJO']),
+    nombre:   buscarCol_(headers, ['APELLIDO Y NOMBRE', 'APELLIDO Y NOMBRES', 'NOMBRE']),
+    categoria:buscarCol_(headers, ['CATEGORIA']),
+    centro:   buscarCol_(headers, ['CENTRO DE COSTO', 'CENTRO', 'OBRA']),
+    color:    buscarCol_(headers, ['COLOR ROPA', 'COLOR']),
+    tipoBotin:buscarCol_(headers, ['TIPO BOTIN', 'BOTIN TIPO']),
+    tallePant:buscarCol_(headers, ['TALLE PANT', 'TALLE PANTALON']),
+    talleCam: buscarCol_(headers, ['TALLE CAM', 'TALLE CAMISA']),
+    talleBotin:buscarCol_(headers, ['TALLE BOTIN']),
+    ultima:   buscarCol_(headers, ['ULTIMA ENTREGA', 'FECHA ENTREGA', 'FECHA', 'ULTIMA']),
+    fPant:    buscarCol_(headers, ['FECHA PANT', 'FECHA PANTALON']),
+    fCam:     buscarCol_(headers, ['FECHA CAM', 'FECHA CAMISA']),
+    fBotin:   buscarCol_(headers, ['FECHA BOTIN']),
+    obs:      buscarCol_(headers, ['OBSERVACIONES', 'OBS'])
+  };
+  if (idx.legajo < 0) throw new Error('Falta la columna LEGAJO en el encabezado.');
+
+  var res = { creados: 0, existentes: 0, entregas: 0, errores: [] };
+
+  for (var r = 1; r < valores.length; r++) {
+    var fila = valores[r];
+    var legajo = String(celda_(fila, idx.legajo)).trim();
+    if (!legajo) continue;
+
+    try {
+      if (buscarOperario_(legajo)) { res.existentes++; }
+      else {
+        crearOperario_({
+          legajo: legajo,
+          nombre: celda_(fila, idx.nombre),
+          categoria: celda_(fila, idx.categoria),
+          centro: celda_(fila, idx.centro),
+          color: celda_(fila, idx.color),
+          tipoBotin: celda_(fila, idx.tipoBotin),
+          tallePant: celda_(fila, idx.tallePant),
+          talleCam: celda_(fila, idx.talleCam),
+          talleBotin: celda_(fila, idx.talleBotin),
+          observaciones: celda_(fila, idx.obs),
+          activo: true
+        });
+        res.creados++;
+      }
+
+      var ultima = aFecha_(celda_(fila, idx.ultima));
+      var porPrenda = {
+        PANTALON: aFecha_(celda_(fila, idx.fPant)) || ultima,
+        CAMISA:   aFecha_(celda_(fila, idx.fCam))  || ultima,
+        BOTIN:    aFecha_(celda_(fila, idx.fBotin)) || ultima
+      };
+      PRENDAS.forEach(function (prenda) {
+        var fecha = porPrenda[prenda];
+        if (!fecha) return;
+        registrarEntrega_({
+          legajo: legajo, fecha: fecha, motivo: 'CICLO INICIAL',
+          observaciones: 'Carga inicial del padrón',
+          items: [{ prenda: prenda }]
+        });
+        res.entregas++;
+      });
+    } catch (e) {
+      res.errores.push('Legajo ' + legajo + ': ' + (e.message || e));
+    }
+  }
+
+  invalidarCache_();
+  return res;
+}
+
+/** Índice (0-based) de la primera columna cuyo encabezado normalizado matchea. */
+function buscarCol_(headersNorm, alias) {
+  for (var a = 0; a < alias.length; a++) {
+    var obj = normalizar_(alias[a]);
+    for (var i = 0; i < headersNorm.length; i++) {
+      if (headersNorm[i] === obj) return i;
+    }
+  }
+  return -1;
+}
+
+function celda_(fila, idx) {
+  return idx >= 0 && idx < fila.length ? fila[idx] : '';
+}
