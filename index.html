@@ -269,22 +269,28 @@
   tr.row-critico td { background: rgba(192,57,43,.05); }
   tr.excluida td { opacity: .45; text-decoration: line-through; }
 
-  /* Motivo de no-compra: input visible solo en prendas marcadas "no comprar" */
-  .mnc-input { display: none; width: 100%; min-width: 150px; padding: 5px 8px; font-size: 13px; margin-top: 6px; }
-  .excluida .mnc-input { display: block; }
-  .mnc-saved { color: var(--gris); font-size: 12px; }
-  .excluida .mnc-saved { display: none; }
-
   /* Comprar agrupado por persona */
   .persona-head { font-size: 14px; margin-bottom: 6px; }
   .persona-card.tiene-critico { border-color: var(--rojo); }
-  .prenda-row { padding: 7px 0; border-top: 1px solid #eef0f5; }
+  .prenda-row { padding: 8px 0; border-top: 1px solid #eef0f5; }
   .persona-head + .prenda-row { border-top: none; }
-  .prenda-main { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
-  .prenda-main > input[type="checkbox"] { flex: 0 0 auto; margin-top: 3px; }
-  .prenda-info { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+  .prenda-top { display: flex; align-items: flex-start; gap: 10px; }
+  .prenda-info { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.5; }
   .prenda-info .badge { margin-top: 2px; }
   .prenda-row.excluida .prenda-info { opacity: .5; text-decoration: line-through; }
+  .no-comprar { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .3px; color: var(--gris);
+    cursor: pointer; white-space: nowrap; user-select: none; }
+  .no-comprar input { margin: 0; }
+  .prenda-row.excluida .no-comprar { color: var(--rojo); font-weight: bold; }
+
+  /* Motivo de no-compra: aparece al marcar "no comprar" */
+  .mnc-wrap { margin-top: 6px; }
+  .mnc-input { display: none; width: 100%; padding: 6px 9px; font-size: 13px; }
+  .prenda-row.excluida .mnc-input { display: block; }
+  .mnc-saved { display: block; color: var(--gris); font-size: 12px; margin-top: 4px; }
+  .mnc-saved:empty { display: none; }
+  .prenda-row.excluida .mnc-saved { display: none; }
 
   /* ---------- Matriz de pedido ---------- */
   .matriz { margin-bottom: 18px; }
@@ -472,10 +478,11 @@
     var p = String(v).split('-');
     return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : v;
   }
-  function badgeEstado(estado, innegociable) {
+  // Un solo estado por prenda. "Innegociable" (pasó el techo) es un crítico más:
+  // no se muestra aparte para no repetir lo mismo dos veces.
+  function badgeEstado(estado) {
     var e = String(estado || '');
-    if (e === 'CRITICO') return '<span class="badge critico">CRÍTICO</span>' +
-      (innegociable ? ' <span class="badge inneg">INNEGOCIABLE</span>' : '');
+    if (e === 'CRITICO') return '<span class="badge critico">CRÍTICO</span>';
     if (e === 'ELEGIBLE') return '<span class="badge elegible">ELEGIBLE</span>';
     return '<span class="badge sindato">SIN DATO</span>';
   }
@@ -776,10 +783,9 @@
       '<div class="card">' +
         '<div class="card-tit">Estado de una prenda</div>' +
         '<p class="muted" style="margin-top:0">Es el semáforo que ves en Comprar.</p>' +
-        defBadge('<span class="badge critico">CRÍTICO</span>', 'Ya hay que comprarla: cumplió su vida útil.') +
+        defBadge('<span class="badge critico">CRÍTICO</span>', 'Hay que comprarla: cumplió (o pasó) su vida útil. Las muy vencidas también son críticas, no hay un estado aparte.') +
         defBadge('<span class="badge elegible">ELEGIBLE</span>', 'Entra en la ventana de recambio: se puede adelantar para juntar volumen.') +
         defBadge('<span class="badge sindato">SIN DATO</span>', 'Falta la fecha de última entrega, no se puede calcular su antigüedad.') +
-        defBadge('<span class="badge inneg">INNEGOCIABLE</span>', 'Pasó el techo de ' + esc(techo) + ' meses: va sí o sí en esta compra.') +
       '</div>' +
 
       '<div class="card">' +
@@ -793,7 +799,7 @@
         '<div class="card-tit">Parámetros de cálculo</div>' +
         defAyuda('Vida útil (' + esc(vida) + ' meses)', 'Cuánto se espera que dure una prenda antes del recambio.') +
         defAyuda('Cadencia (' + esc(cad) + ' meses)', 'Cada cuánto se agrupan las compras; abre la ventana “elegible” antes de que sea crítica.') +
-        defAyuda('Techo (' + esc(techo) + ' meses)', 'Vida útil + cadencia. Máximo absoluto: pasado ese punto la prenda es innegociable. Se calcula solo.') +
+        defAyuda('Techo (' + esc(techo) + ' meses)', 'Vida útil + cadencia. Máximo absoluto de vida de una prenda. Se calcula solo.') +
         defAyuda('Días de previsión (' + esc(dias) + ')', 'El horizonte de la pantalla de Previsión y de la tarjeta del tablero.') +
         defAyuda('Fecha ancla', 'La fecha de referencia desde la que el sistema organiza las corridas.') +
       '</div>' +
@@ -1161,20 +1167,23 @@
     var talleHtml = r.faltaTalle
       ? '<span class="badge sindato">falta talle</span>'
       : 'talle <b>' + esc(r.talle) + '</b>';
-    var meses = (r.mesesUso === null ? '' : ' · ' + r.mesesUso + 'm');
+    var meses = (r.mesesUso === null ? '' : ' · ' + Math.round(r.mesesUso) + 'm');
     var info = '<span class="prenda-info"><b>' + esc(PRENDA_LABEL[r.prenda] || r.prenda) + '</b>' +
       (r.grupo ? ' · ' + esc(r.grupo) : '') + ' · ' + talleHtml + meses + ' ' +
-      badgeEstado(r.estado, r.innegociable) + '</span>';
-    var chk = editable
-      ? '<input type="checkbox" class="exc" title="No comprar esta prenda" data-clave="' + esc(clave) + '"' +
-          (excl ? ' checked' : '') + (r.faltaTalle ? ' disabled' : '') + '>'
+      badgeEstado(r.estado) + '</span>';
+    var toggle = editable
+      ? '<label class="no-comprar" title="Marcar para no comprar esta prenda">' +
+          '<input type="checkbox" class="exc" data-clave="' + esc(clave) + '"' + (excl ? ' checked' : '') + '> no comprar' +
+        '</label>'
       : '';
     var mot = editable
-      ? '<input type="text" class="mnc-input" data-clave="' + esc(clave) + '" data-legajo="' + esc(r.legajo) + '" data-prenda="' + esc(r.prenda) + '" value="' + esc(r.motivoNoCompra || '') + '" placeholder="por qué no se compra">' +
-        '<span class="mnc-saved">' + esc(r.motivoNoCompra || '') + '</span>'
+      ? '<div class="mnc-wrap">' +
+          '<input type="text" class="mnc-input" data-clave="' + esc(clave) + '" data-legajo="' + esc(r.legajo) + '" data-prenda="' + esc(r.prenda) + '" value="' + esc(r.motivoNoCompra || '') + '" placeholder="¿por qué no se compra?">' +
+          '<span class="mnc-saved">' + (r.motivoNoCompra ? 'Motivo: ' + esc(r.motivoNoCompra) : '') + '</span>' +
+        '</div>'
       : '';
     return '<div class="prenda-row' + (excl ? ' excluida' : '') + '">' +
-      '<label class="prenda-main">' + chk + info + '</label>' + mot +
+      '<div class="prenda-top">' + info + toggle + '</div>' + mot +
     '</div>';
   }
 
@@ -1204,7 +1213,7 @@
         })[0];
         if (fila) fila.motivoNoCompra = comentario;
         var span = inp.parentNode.querySelector('.mnc-saved');
-        if (span) span.textContent = comentario;
+        if (span) span.textContent = comentario ? 'Motivo: ' + comentario : '';
         api('registrarNoCompra', { datos: {
           legajo: inp.getAttribute('data-legajo'), prenda: inp.getAttribute('data-prenda'), comentario: comentario
         } }).then(function () { toast('Motivo guardado.', 'ok'); }).catch(manejar);
@@ -1243,7 +1252,6 @@
       '<div class="chip rojo"><b>' + (r.criticos || 0) + '</b><span>Críticos</span></div>' +
       '<div class="chip amarillo"><b>' + (r.elegibles || 0) + '</b><span>Elegibles</span></div>' +
       '<div class="chip"><b>' + (r.sinDato || 0) + '</b><span>Sin dato</span></div>' +
-      '<div class="chip"><b>' + (r.innegociables || 0) + '</b><span>Innegociables</span></div>' +
       '<div class="chip"><b>' + (r.faltaTalle || 0) + '</b><span>Falta talle</span></div>' +
     '</div>';
   }
@@ -1895,7 +1903,7 @@
           '<label class="campo"><span>Días de previsión</span><input id="apDias" type="number" min="0" step="1" value="' + esc(c.diasPrevision) + '"></label>' +
           '<label class="campo"><span>Fecha ancla de corridas</span><input id="apFecha" type="date" value="' + esc(fechaAInput(c.fechaAncla)) + '"></label>' +
         '</div>' +
-        '<p class="muted">Techo duro: <b id="apTecho">' + esc(c.techo) + '</b> meses. Pasado ese punto la prenda es innegociable.</p>' +
+        '<p class="muted">Techo duro: <b id="apTecho">' + esc(c.techo) + '</b> meses. Es el máximo de vida de una prenda.</p>' +
         '<button id="apGuardar" class="btn btn-primary btn-block">Guardar parámetros</button>' +
       '</div>';
     function recalcTecho() {
