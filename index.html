@@ -3,7 +3,299 @@
 <head>
   <base target="_top">
   <meta charset="utf-8">
-  <?!= include('Estilos'); ?>
+  <style>
+  :root {
+    --cobalto: #223D85;
+    --cobalto-osc: #182c61;
+    --cobalto-claro: #e9edf7;
+    --rojo: #c0392b;
+    --rojo-bg: #fbe4e1;
+    --amarillo: #b7791f;
+    --amarillo-bg: #fcf3d9;
+    --gris: #6b7280;
+    --gris-bg: #eceef1;
+    --verde: #1e7e4f;
+    --borde: #d8dce6;
+    --texto: #1f2533;
+    --fondo: #f4f6fb;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--texto);
+    background: var(--fondo);
+    font-size: 14px;
+  }
+
+  .oculto { display: none !important; }
+
+  /* ---------- Login ---------- */
+  .login-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--cobalto) 0%, var(--cobalto-osc) 100%);
+    padding: 16px;
+  }
+  .login-card {
+    background: #fff;
+    width: 100%;
+    max-width: 340px;
+    border-radius: 12px;
+    padding: 28px 24px;
+    box-shadow: 0 18px 40px rgba(0,0,0,.25);
+  }
+  .login-logo {
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: var(--cobalto);
+    text-align: center;
+  }
+  .login-sub {
+    text-align: center;
+    color: var(--gris);
+    margin: 4px 0 22px;
+    font-size: 13px;
+  }
+
+  .campo { display: block; margin-bottom: 14px; }
+  .campo > span {
+    display: block;
+    font-size: 12px;
+    color: var(--gris);
+    margin-bottom: 4px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+  }
+  input, select, textarea {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--borde);
+    border-radius: 7px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--texto);
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--cobalto);
+    box-shadow: 0 0 0 3px rgba(34,61,133,.15);
+  }
+  textarea { resize: vertical; min-height: 120px; }
+
+  /* ---------- Botones ---------- */
+  .btn {
+    display: inline-block;
+    padding: 9px 16px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    background: #fff;
+    color: var(--texto);
+    transition: background .15s, box-shadow .15s;
+  }
+  .btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .btn-primary { background: var(--cobalto); color: #fff; }
+  .btn-primary:hover { background: var(--cobalto-osc); }
+  .btn-ghost { background: #fff; border-color: var(--borde); color: var(--cobalto); }
+  .btn-peligro { background: var(--rojo); color: #fff; }
+  .btn-ok { background: var(--verde); color: #fff; }
+  .btn-block { width: 100%; margin-top: 6px; }
+  .btn-sm { padding: 5px 10px; font-size: 13px; }
+  .btn-link {
+    background: none; border: none; color: inherit; cursor: pointer;
+    text-decoration: underline; font-size: 13px; font-family: inherit; padding: 2px 4px;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+
+  /* ---------- Topbar ---------- */
+  .topbar {
+    background: var(--cobalto);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 16px;
+    height: 52px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  .topbar-marca { font-weight: bold; letter-spacing: 1px; white-space: nowrap; }
+  .nav { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
+  .nav button {
+    background: none; border: none; color: #cdd6ee; cursor: pointer;
+    padding: 8px 11px; border-radius: 6px; font-size: 13px; white-space: nowrap;
+    font-family: inherit;
+  }
+  .nav button:hover { background: rgba(255,255,255,.12); color: #fff; }
+  .nav button.activo { background: #fff; color: var(--cobalto); font-weight: bold; }
+  .topbar-user { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .topbar-user span { font-size: 13px; }
+  .topbar-user .btn-link { color: #cdd6ee; }
+
+  /* ---------- Vista ---------- */
+  .vista { max-width: 1100px; margin: 0 auto; padding: 18px 16px 60px; }
+  .seccion-tit { font-size: 19px; font-weight: bold; color: var(--cobalto); margin: 0 0 4px; }
+  .seccion-sub { color: var(--gris); margin: 0 0 16px; font-size: 13px; }
+
+  .card {
+    background: #fff;
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card-tit { font-weight: bold; color: var(--cobalto); margin: 0 0 10px; font-size: 15px; }
+
+  .fila-botones { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* ---------- Chips de resumen ---------- */
+  .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip {
+    background: #fff; border: 1px solid var(--borde); border-radius: 9px;
+    padding: 8px 14px; min-width: 90px;
+  }
+  .chip b { display: block; font-size: 22px; line-height: 1.1; }
+  .chip span { font-size: 11px; color: var(--gris); text-transform: uppercase; letter-spacing: .4px; }
+  .chip.rojo b { color: var(--rojo); }
+  .chip.amarillo b { color: var(--amarillo); }
+  .chip.cobalto b { color: var(--cobalto); }
+
+  /* ---------- Tablero (inicio) ---------- */
+  .tablero {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 14px;
+  }
+  .tile {
+    text-align: left;
+    background: #fff;
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 18px;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--texto);
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow .15s, transform .1s, border-color .15s;
+  }
+  .tile:hover {
+    box-shadow: 0 8px 20px rgba(0,0,0,.12);
+    transform: translateY(-2px);
+    border-color: var(--cobalto);
+  }
+  .tile-ico { font-size: 24px; line-height: 1; margin-bottom: 8px; }
+  .tile-num { font-size: 34px; font-weight: bold; line-height: 1; color: var(--cobalto); }
+  .tile-uni { font-size: 11px; color: var(--gris); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 10px; }
+  .tile-tit { font-size: 15px; font-weight: bold; color: var(--texto); }
+  .tile-nota { font-size: 12px; color: var(--gris); margin-top: 2px; }
+  .tile.rojo .tile-num { color: var(--rojo); }
+  .tile.amarillo .tile-num { color: var(--amarillo); }
+  .tile.amarillo { border-color: var(--amarillo); background: var(--amarillo-bg); }
+
+  /* ---------- Toggle de horizonte (Comprar) ---------- */
+  .seg { display: inline-flex; border: 1px solid var(--borde); border-radius: 9px; overflow: hidden; background: #fff; margin-bottom: 14px; }
+  .seg-btn {
+    border: 0; border-right: 1px solid var(--borde); background: #fff; color: var(--cobalto);
+    cursor: pointer; padding: 8px 20px; font-size: 13px; font-weight: bold;
+  }
+  .seg-btn:last-child { border-right: 0; }
+  .seg-btn:hover { background: var(--cobalto-claro); }
+  .seg-btn.activo { background: var(--cobalto); color: #fff; }
+  .sub-tit { font-size: 15px; font-weight: bold; color: var(--cobalto); margin: 22px 0 10px; }
+  .falta-talle { color: var(--rojo); font-weight: 700; }
+  .pedido-pane { transition: opacity .15s; }
+  .pedido-pane.actualizando { opacity: .45; pointer-events: none; }
+  .card.warn { border-color: var(--amarillo); background: var(--amarillo-bg); }
+
+  /* ---------- Tablas ---------- */
+  .tabla-wrap { overflow-x: auto; border: 1px solid var(--borde); border-radius: 10px; background: #fff; }
+  table.tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.tabla th, table.tabla td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eef0f5; }
+  table.tabla th {
+    background: var(--cobalto-claro); color: var(--cobalto-osc);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap;
+    position: sticky; top: 0;
+  }
+  table.tabla tr:last-child td { border-bottom: none; }
+  table.tabla tbody tr:hover { background: #f9fbff; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .center { text-align: center; }
+
+  /* ---------- Semáforo ---------- */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 11px; font-weight: bold; white-space: nowrap;
+  }
+  .badge.critico { background: var(--rojo-bg); color: var(--rojo); }
+  .badge.elegible { background: var(--amarillo-bg); color: var(--amarillo); }
+  .badge.sindato { background: var(--gris-bg); color: var(--gris); }
+  .badge.inneg { background: var(--cobalto); color: #fff; }
+  .badge.tag { background: var(--cobalto-claro); color: var(--cobalto-osc); }
+  tr.row-critico td { background: rgba(192,57,43,.05); }
+  tr.excluida td { opacity: .45; text-decoration: line-through; }
+
+  /* ---------- Matriz de pedido ---------- */
+  .matriz { margin-bottom: 18px; }
+  .matriz table { width: auto; min-width: 320px; }
+  .matriz td.celda { text-align: center; }
+  .matriz .total-col, .matriz .total-row td { font-weight: bold; background: var(--cobalto-claro); }
+
+  /* ---------- Estados varios ---------- */
+  .error { color: var(--rojo); font-size: 13px; margin-top: 10px; }
+  .vacio { color: var(--gris); text-align: center; padding: 26px; font-style: italic; }
+  .cargando { color: var(--gris); text-align: center; padding: 40px; }
+  .pill-ganador { background: var(--verde); color: #fff; padding: 3px 10px; border-radius: 20px; font-weight: bold; }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--cobalto-osc); color: #fff; padding: 11px 18px; border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.3); z-index: 60; font-size: 14px; max-width: 90vw;
+  }
+  .toast.err { background: var(--rojo); }
+  .toast.ok { background: var(--verde); }
+
+  /* ---------- Modal ---------- */
+  .modal-back {
+    position: fixed; inset: 0; background: rgba(20,28,52,.55);
+    display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px;
+  }
+  .modal-card {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 560px;
+    max-height: 90vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  }
+  .modal-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid var(--borde);
+    font-weight: bold; color: var(--cobalto); position: sticky; top: 0; background: #fff;
+  }
+  .modal-cuerpo { padding: 18px; }
+
+  /* ---------- Items entrega ---------- */
+  .item-prenda {
+    display: grid; grid-template-columns: 28px 110px 1fr; gap: 10px; align-items: center;
+    padding: 8px; border: 1px solid var(--borde); border-radius: 8px; margin-bottom: 8px;
+  }
+  .item-prenda.off { opacity: .5; }
+  .muted { color: var(--gris); font-size: 12px; }
+  .right { text-align: right; }
+  label.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+</style>
 </head>
 <body>
   <!-- Pantalla de login -->
@@ -11,10 +303,6 @@
     <div class="login-card">
       <div class="login-logo">INGECO</div>
       <div class="login-sub">Compra de Ropa de Trabajo</div>
-      <label class="campo">
-        <span>Usuario</span>
-        <select id="loginNombre"></select>
-      </label>
       <label class="campo">
         <span>PIN</span>
         <input id="loginPin" type="password" inputmode="numeric" maxlength="4"
@@ -28,7 +316,7 @@
   <!-- App -->
   <div id="app" class="oculto">
     <header class="topbar">
-      <div class="topbar-marca">INGECO · Ropa</div>
+      <div id="marca" class="topbar-marca" style="cursor:pointer" title="Ir al inicio">INGECO · Ropa</div>
       <nav id="nav" class="nav"></nav>
       <div class="topbar-user">
         <span id="usuarioActual"></span>
@@ -50,6 +338,1283 @@
     </div>
   </div>
 
-  <?!= include('App'); ?>
+  <script>
+(function () {
+  'use strict';
+
+  /* ===================== Estado ===================== */
+  var S = {
+    token: null,
+    usuario: '',
+    config: null,
+    listas: {},
+    seccion: 'tablero',
+    horizonteComprar: 'ahora', // 'ahora' | 'prevision' — toggle de la pantalla Comprar
+    exclusiones: {},  // { "LEGAJO|PRENDA": true } marcado como "no comprar"
+    personalTab: 'padron',       // 'padron' | 'cruce' — sub-pestaña de Personal
+    personalSoloSinTalle: false  // one-shot: entrar a Personal ya filtrando "sin talle" (desde el tablero)
+  };
+
+  var SECCIONES = [
+    { id: 'tablero',   label: 'Inicio' },
+    { id: 'corrida',   label: 'Comprar' },
+    { id: 'entrega',   label: 'Entregar' },
+    { id: 'personal',  label: 'Personal' },
+    { id: 'historial', label: 'Historial' },
+    { id: 'roturas',   label: 'Roturas' },
+    { id: 'ajustes',   label: 'Ajustes' }
+  ];
+
+  /* ===================== Puente con el servidor ===================== */
+  function rawCall(metodo, payloadObj) {
+    return new Promise(function (resolve, reject) {
+      if (!(window.google && google.script && google.script.run)) {
+        reject(new Error('Esta vista necesita estar desplegada como Web App de Apps Script.'));
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(function (jsonStr) {
+          var res;
+          try { res = JSON.parse(jsonStr); }
+          catch (e) { reject(new Error('Respuesta inválida del servidor.')); return; }
+          if (res && res.ok) resolve(res.data);
+          else reject(new Error(res && res.error ? res.error : 'Error desconocido.'));
+        })
+        .withFailureHandler(function (err) {
+          reject(new Error(err && err.message ? err.message : String(err)));
+        })
+        .apiCall(metodo, JSON.stringify(payloadObj || {}));
+    });
+  }
+  function api(metodo, payload) {
+    payload = payload || {};
+    if (S.token) payload.__token = S.token;
+    return rawCall(metodo, payload);
+  }
+
+  /* ===================== Helpers DOM / formato ===================== */
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function fmt(n) {
+    var x = Number(n);
+    if (!isFinite(x)) return '0';
+    return x.toLocaleString('es-AR');
+  }
+  function money(n) {
+    if (n === null || n === undefined || n === '') return '—';
+    var x = Number(n);
+    if (!isFinite(x)) return '—';
+    return '$ ' + x.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+  }
+  var toastT;
+  function toast(msg, tipo) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + (tipo || '');
+    clearTimeout(toastT);
+    toastT = setTimeout(function () { t.classList.add('oculto'); }, 3400);
+  }
+  function tabla(headers, rowsHtml) {
+    return '<div class="tabla-wrap"><table class="tabla"><thead><tr>' +
+      headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + (rowsHtml || '') + '</tbody></table></div>';
+  }
+  function cargando() { return '<div class="cargando">Cargando…</div>'; }
+  function vacio(msg) { return '<div class="vacio">' + esc(msg || 'Sin datos.') + '</div>'; }
+  function hoyInput() {
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function inputAFecha(v) {
+    if (!v) return '';
+    var p = String(v).split('-');
+    return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : v;
+  }
+  function badgeEstado(estado, innegociable) {
+    var e = String(estado || '');
+    if (e === 'CRITICO') return '<span class="badge critico">CRÍTICO</span>' +
+      (innegociable ? ' <span class="badge inneg">INNEGOCIABLE</span>' : '');
+    if (e === 'ELEGIBLE') return '<span class="badge elegible">ELEGIBLE</span>';
+    return '<span class="badge sindato">SIN DATO</span>';
+  }
+
+  /* ===================== Modal ===================== */
+  function abrirModal(titulo, html) {
+    $('modalTitulo').textContent = titulo;
+    $('modalCuerpo').innerHTML = html;
+    $('modal').classList.remove('oculto');
+  }
+  function cerrarModal() {
+    $('modal').classList.add('oculto');
+    $('modalCuerpo').innerHTML = '';
+  }
+
+  /* ===================== Login ===================== */
+  function mostrarLoginError(msg) {
+    var d = $('loginError');
+    d.textContent = msg;
+    d.classList.remove('oculto');
+  }
+  function hacerLogin() {
+    var pin = $('loginPin').value;
+    $('loginError').classList.add('oculto');
+    if (!pin) { mostrarLoginError('Escribí el PIN.'); return; }
+    $('btnLogin').disabled = true;
+    rawCall('loginPin', { pin: pin }).then(function (res) {
+      S.token = res.token;
+      S.usuario = res.nombre;
+      try { sessionStorage.setItem('ropa_token', res.token); sessionStorage.setItem('ropa_user', res.nombre); } catch (e) {}
+      iniciarApp();
+    }).catch(function (e) {
+      $('btnLogin').disabled = false;
+      mostrarLoginError(e.message);
+    });
+  }
+  function salir() {
+    S.token = null; S.usuario = '';
+    try { sessionStorage.removeItem('ropa_token'); sessionStorage.removeItem('ropa_user'); } catch (e) {}
+    $('app').classList.add('oculto');
+    $('login').classList.remove('oculto');
+    $('btnLogin').disabled = false;
+    $('loginPin').value = '';
+  }
+
+  /* ===================== Arranque de la app ===================== */
+  function iniciarApp() {
+    $('login').classList.add('oculto');
+    $('app').classList.remove('oculto');
+    $('usuarioActual').textContent = S.usuario;
+    construirNav();
+    Promise.all([api('getConfig'), api('getListas')]).then(function (r) {
+      S.config = r[0]; S.listas = r[1] || {};
+      ir(S.seccion);
+    }).catch(function (e) {
+      if (/Sesión|sesión|venció/.test(e.message)) { salir(); return; }
+      $('vista').innerHTML = '<div class="error">' + esc(e.message) + '</div>';
+    });
+  }
+  function construirNav() {
+    $('nav').innerHTML = SECCIONES.map(function (s) {
+      return '<button data-sec="' + s.id + '">' + esc(s.label) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('nav').querySelectorAll('button'), function (b) {
+      b.addEventListener('click', function () { ir(b.getAttribute('data-sec')); });
+    });
+  }
+  function marcarNav() {
+    Array.prototype.forEach.call($('nav').querySelectorAll('button'), function (b) {
+      b.classList.toggle('activo', b.getAttribute('data-sec') === S.seccion);
+    });
+  }
+  function ir(sec) {
+    S.seccion = sec;
+    marcarNav();
+    var fn = RENDER[sec];
+    if (fn) fn();
+  }
+  function manejar(e) { // manejador de errores común para las promesas de sección
+    if (/Sesión|sesión|venció/.test(e.message)) { toast('Sesión vencida, volvé a entrar.', 'err'); salir(); return; }
+    toast(e.message, 'err');
+  }
+
+  /* ===================== Secciones ===================== */
+  var RENDER = {};
+
+  /* ---------- Tablero (inicio) ---------- */
+  RENDER.tablero = function () {
+    $('vista').innerHTML =
+      '<h2 class="seccion-tit">Tablero</h2>' +
+      '<p class="seccion-sub">Qué hay para hacer. Tocá una tarjeta para ir directo.</p>' +
+      '<div id="tabCards">' + cargando() + '</div>';
+    api('resumenTablero').then(pintarTablero).catch(manejar);
+  };
+
+  function pintarTablero(t) {
+    t = t || {};
+    var comprar = t.comprar || {};
+    var prev = t.prevision || {};
+    var sinTalle = t.sinTalle || 0;
+    var pend = t.entregasPendientes || 0;
+    var tiles = [];
+
+    tiles.push(tile('corrida', '🛒', 'Comprar ahora',
+      comprar.criticos || 0, 'prendas críticas',
+      'Corrida ' + (comprar.fecha || '') + ' · ' + (comprar.total || 0) + ' prenda(s) en total',
+      (comprar.criticos ? 'rojo' : ''), 'ahora'));
+
+    // Poka-yoke: lo sin talle no se puede comprar; solo aparece si hay.
+    if (sinTalle > 0) {
+      tiles.push(tile('personal', '⚠️', 'Sin talle',
+        sinTalle, 'prenda(s) sin talle',
+        'No se pueden comprar hasta cargar el talle en Personal', 'amarillo'));
+    }
+
+    tiles.push(tile('entrega', '📦', 'Entregar',
+      pend, 'entregas pendientes',
+      pend ? 'De la última compra congelada' : 'O registrá una entrega suelta por legajo', ''));
+
+    tiles.push(tile('corrida', '📅', 'Previsión ' + (prev.dias || 30) + ' días',
+      prev.total || 0, 'prendas que vencen',
+      'Asegurar el fondo con anticipación', '', 'prevision'));
+
+    $('tabCards').innerHTML = '<div class="tablero">' + tiles.join('') + '</div>';
+    Array.prototype.forEach.call($('tabCards').querySelectorAll('.tile'), function (el) {
+      el.addEventListener('click', function () {
+        var sec = el.getAttribute('data-sec');
+        var h = el.getAttribute('data-horizonte');
+        if (sec === 'corrida' && h) S.horizonteComprar = (h === 'prevision') ? 'prevision' : 'ahora';
+        if (sec === 'personal') S.personalSoloSinTalle = true; // el tile "Sin talle" abre Personal ya filtrado
+        ir(sec);
+      });
+    });
+  }
+
+  function tile(sec, icono, titulo, numero, unidad, nota, color, horizonte) {
+    return '<button class="tile ' + (color || '') + '" data-sec="' + esc(sec) + '"' +
+      (horizonte ? ' data-horizonte="' + esc(horizonte) + '"' : '') + '>' +
+      '<span class="tile-ico">' + icono + '</span>' +
+      '<span class="tile-num">' + fmt(numero) + '</span>' +
+      '<span class="tile-uni">' + esc(unidad) + '</span>' +
+      '<span class="tile-tit">' + esc(titulo) + '</span>' +
+      '<span class="tile-nota">' + esc(nota) + '</span>' +
+    '</button>';
+  }
+
+  /* ---------- Entregar: pendientes de la última compra + entrega suelta ---------- */
+  RENDER.entrega = function () {
+    $('vista').innerHTML =
+      '<h2 class="seccion-tit">Entregar</h2>' +
+      '<p class="seccion-sub">Arriba, lo que falta entregar de la última compra. Abajo, una entrega suelta por legajo. Cada entrega reinicia el reloj de esa prenda.</p>' +
+      '<div id="pendBody">' + cargando() + '</div>' +
+      '<div id="sueltaBody"></div>';
+    cargarPendientes();
+    pintarEntregaSuelta();
+  };
+
+  function motivosLista() {
+    return (S.config && S.config.motivos) || ['CICLO', 'ROTURA', 'CICLO INICIAL'];
+  }
+  function motivosOpts(sel) {
+    return motivosLista().map(function (m) {
+      return '<option value="' + esc(m) + '"' + (m === sel ? ' selected' : '') + '>' + esc(m) + '</option>';
+    }).join('');
+  }
+
+  function cargarPendientes() {
+    $('pendBody').innerHTML = cargando();
+    api('entregasPendientes').then(pintarPendientes).catch(function (e) {
+      $('pendBody').innerHTML = '<div class="error">' + esc(e.message) + '</div>';
+    });
+  }
+
+  function pintarPendientes(p) {
+    p = p || {};
+    if (!p.hayCompra) {
+      $('pendBody').innerHTML = '<div class="card" style="max-width:640px"><h3 class="sub-tit">Pendientes de la última compra</h3>' +
+        vacio('Todavía no hay ninguna compra congelada. Congelá una en Comprar para armar la lista de entrega.') + '</div>';
+      return;
+    }
+    var enc = '<h3 class="sub-tit">Pendientes de la última compra</h3>' +
+      '<p class="muted">Corrida ' + esc(p.fechaCorrida || '') + ' · congelada ' + esc(p.fechaCongelado || '') +
+        ' · <b>' + p.total + '</b> prenda(s) sin entregar.</p>';
+    if (!p.total) {
+      $('pendBody').innerHTML = '<div class="card" style="max-width:640px">' + enc +
+        vacio('Todo lo de la última compra ya se entregó. 👌') + '</div>';
+      return;
+    }
+    var cards = p.personas.map(function (per) {
+      var motivoDef = per.items.every(function (it) { return it.estado === 'SIN DATO'; }) ? 'CICLO INICIAL' : 'CICLO';
+      var items = per.items.map(function (it) {
+        return '<div class="item-prenda" data-prenda="' + it.prenda + '">' +
+          '<input type="checkbox" class="pInc" checked>' +
+          '<input type="text" class="pTalle" value="' + esc(it.talle) + '" placeholder="talle">' +
+          '<span class="muted">' + it.prenda + (it.grupo ? ' · ' + esc(it.grupo) : '') + ' · ' + esc(it.estado) + '</span>' +
+        '</div>';
+      }).join('');
+      return '<div class="card pend-card" data-legajo="' + esc(per.legajo) + '" style="max-width:640px;margin-bottom:12px">' +
+        '<div style="margin-bottom:8px"><b>' + esc(per.nombre || '(sin nombre)') + '</b> · legajo ' + esc(per.legajo) + '</div>' +
+        items +
+        '<div class="grid2">' +
+          '<label class="campo"><span>Fecha</span><input type="date" class="pFecha" value="' + hoyInput() + '"></label>' +
+          '<label class="campo"><span>Motivo</span><select class="pMotivo">' + motivosOpts(motivoDef) + '</select></label>' +
+        '</div>' +
+        '<button class="btn btn-primary btn-block pConf">Confirmar entrega</button>' +
+      '</div>';
+    }).join('');
+    $('pendBody').innerHTML = '<div style="max-width:640px">' + enc + '</div>' + cards;
+
+    Array.prototype.forEach.call($('pendBody').querySelectorAll('.pend-card'), function (card) {
+      Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
+        var chk = row.querySelector('.pInc');
+        chk.addEventListener('change', function () { row.classList.toggle('off', !chk.checked); });
+      });
+      card.querySelector('.pConf').addEventListener('click', function () { confirmarPersona(card); });
+    });
+  }
+
+  function confirmarPersona(card) {
+    var items = [];
+    Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
+      if (!row.querySelector('.pInc').checked) return;
+      items.push({ prenda: row.getAttribute('data-prenda'), talle: row.querySelector('.pTalle').value.trim() });
+    });
+    if (!items.length) { toast('Elegí al menos una prenda.', 'err'); return; }
+    var datos = {
+      legajo: card.getAttribute('data-legajo'),
+      fecha: inputAFecha(card.querySelector('.pFecha').value),
+      motivo: card.querySelector('.pMotivo').value,
+      items: items
+    };
+    var btn = card.querySelector('.pConf');
+    btn.disabled = true;
+    api('confirmarEntregas', { datos: datos }).then(function (r) {
+      toast('Entrega registrada: ' + r.entrega.prendas.join(', ') + ' (' + r.entrega.fecha + ').', 'ok');
+      pintarPendientes(r.pendientes);
+    }).catch(function (e) { btn.disabled = false; manejar(e); });
+  }
+
+  function pintarEntregaSuelta() {
+    $('sueltaBody').innerHTML =
+      '<h3 class="sub-tit" style="margin-top:18px">Entrega suelta</h3>' +
+      '<p class="muted">Por fuera de la compra (rotura, reposición puntual). No edita talles del padrón.</p>' +
+      '<div class="card" style="max-width:640px">' +
+        '<div class="grid2">' +
+          '<label class="campo"><span>Legajo</span>' +
+            '<input id="eLegajo" type="text" placeholder="N° de legajo"></label>' +
+          '<label class="campo"><span>&nbsp;</span>' +
+            '<button id="eBuscar" class="btn btn-ghost btn-block">Buscar operario</button></label>' +
+        '</div>' +
+        '<div id="eOperario"></div>' +
+      '</div>';
+    $('eBuscar').addEventListener('click', buscarParaEntrega);
+    $('eLegajo').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') buscarParaEntrega(); });
+  }
+
+  function buscarParaEntrega() {
+    var legajo = $('eLegajo').value.trim();
+    if (!legajo) { toast('Escribí un legajo.', 'err'); return; }
+    $('eOperario').innerHTML = cargando();
+    api('datosOperario', { legajo: legajo }).then(function (op) {
+      pintarFormEntrega(op, motivosLista());
+    }).catch(function (e) { $('eOperario').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
+  }
+
+  function pintarFormEntrega(op, motivos) {
+    var prendas = ['PANTALON', 'CAMISA', 'BOTIN'];
+    var filas = prendas.map(function (pr) {
+      var talle = (op.talles && op.talles[pr]) || '';
+      var grupo = pr === 'BOTIN' ? (op.grupos && op.grupos.tipoBotin) : (op.grupos && op.grupos.color);
+      return '<div class="item-prenda" data-prenda="' + pr + '">' +
+        '<input type="checkbox" class="eInc" checked>' +
+        '<input type="text" class="eTalle" value="' + esc(talle) + '" placeholder="talle">' +
+        '<span class="muted">' + pr + (grupo ? ' · ' + esc(grupo) : '') + '</span>' +
+      '</div>';
+    }).join('');
+
+    $('eOperario').innerHTML =
+      '<div style="margin:6px 0 12px"><b>' + esc(op.nombre || '(sin nombre)') + '</b> · legajo ' + esc(op.legajo) +
+        (op.activo ? '' : ' · <span class="badge sindato">INACTIVO</span>') + '</div>' +
+      '<div class="grid2">' +
+        '<label class="campo"><span>Fecha</span><input id="eFecha" type="date" value="' + hoyInput() + '"></label>' +
+        '<label class="campo"><span>Motivo</span><select id="eMotivo">' +
+          motivos.map(function (m) { return '<option value="' + esc(m) + '">' + esc(m) + '</option>'; }).join('') +
+        '</select></label>' +
+      '</div>' +
+      '<label class="campo"><span>Prendas a entregar</span></label>' + filas +
+      '<label class="campo"><span>Observaciones</span><textarea id="eObs" style="min-height:60px"></textarea></label>' +
+      '<button id="eGuardar" class="btn btn-primary btn-block">Registrar entrega</button>';
+
+    Array.prototype.forEach.call($('eOperario').querySelectorAll('.item-prenda'), function (row) {
+      var chk = row.querySelector('.eInc');
+      chk.addEventListener('change', function () { row.classList.toggle('off', !chk.checked); });
+    });
+    $('eGuardar').addEventListener('click', function () { guardarEntrega(op); });
+  }
+
+  function guardarEntrega(op) {
+    var items = [];
+    Array.prototype.forEach.call($('eOperario').querySelectorAll('.item-prenda'), function (row) {
+      if (!row.querySelector('.eInc').checked) return;
+      items.push({ prenda: row.getAttribute('data-prenda'), talle: row.querySelector('.eTalle').value.trim() });
+    });
+    if (!items.length) { toast('Elegí al menos una prenda.', 'err'); return; }
+    var datos = {
+      legajo: op.legajo,
+      fecha: inputAFecha($('eFecha').value),
+      motivo: $('eMotivo').value,
+      observaciones: $('eObs').value.trim(),
+      items: items
+    };
+    $('eGuardar').disabled = true;
+    api('registrarEntrega', { datos: datos }).then(function (r) {
+      toast('Entrega registrada: ' + r.prendas.join(', ') + ' (' + r.fecha + ').', 'ok');
+      $('eOperario').innerHTML = '';
+      $('eLegajo').value = '';
+      $('eLegajo').focus();
+    }).catch(function (e) { $('eGuardar').disabled = false; manejar(e); });
+  }
+
+  /* ---------- Comprar (corrida + previsión + pedido en una pantalla) ---------- */
+  RENDER.corrida = function () {
+    $('vista').innerHTML =
+      '<h2 class="seccion-tit">Comprar</h2>' +
+      '<div id="comprarToggle"></div>' +
+      '<div id="comprarBody">' + cargando() + '</div>';
+    pintarToggleHorizonte();
+    cargarComprar();
+  };
+
+  function pintarToggleHorizonte() {
+    var dias = (S.config && S.config.diasPrevision) || 30;
+    var h = S.horizonteComprar;
+    $('comprarToggle').innerHTML = '<div class="seg">' +
+      '<button class="seg-btn ' + (h === 'ahora' ? 'activo' : '') + '" data-h="ahora">Ahora</button>' +
+      '<button class="seg-btn ' + (h === 'prevision' ? 'activo' : '') + '" data-h="prevision">+' + dias + ' días</button>' +
+    '</div>';
+    Array.prototype.forEach.call($('comprarToggle').querySelectorAll('.seg-btn'), function (b) {
+      b.addEventListener('click', function () {
+        var nh = b.getAttribute('data-h');
+        if (nh === S.horizonteComprar) return;
+        S.horizonteComprar = nh;
+        pintarToggleHorizonte();
+        cargarComprar();
+      });
+    });
+  }
+
+  function cargarComprar() {
+    clearTimeout(comprarT);   // cancela un refresco de pedido pendiente
+    comprarSeq++;             // invalida cualquier refresco en vuelo
+    $('comprarBody').innerHTML = cargando();
+    api('vistaComprar', { horizonte: S.horizonteComprar, exclusiones: Object.keys(S.exclusiones) })
+      .then(pintarComprar).catch(manejar);
+  }
+
+  function pintarComprar(v) {
+    v = v || {};
+    var esAhora = (v.horizonte !== 'prevision');
+    if (v.pedido) v.pedido.dias = v.dias;
+    var sub = esAhora
+      ? ('Corrida ' + esc(v.fechaCorrida || '') + ' — lo que corresponde comprar ahora.')
+      : ('Previsión a ' + (v.dias || 30) + ' días (' + esc(v.fechaObjetivo || '') + ') — para anticipar el fondo.');
+    var aviso = esAhora
+      ? 'Marcá “No comprar” lo que no va en esta compra. Lo que falta talle no se puede pedir hasta cargarlo en Personal.'
+      : 'Vista informativa: lo que va a vencer en el horizonte. Acá no se compra ni se congela.';
+    var nExcl = Object.keys(S.exclusiones).length;
+    var limpiar = (esAhora && nExcl)
+      ? '<div class="fila-botones"><button id="cLimpiar" class="btn btn-ghost">Limpiar exclusiones (' + nExcl + ')</button></div>'
+      : '';
+
+    $('comprarBody').innerHTML =
+      '<p class="seccion-sub">' + sub + '</p>' +
+      chipsResumen(v.resumen || {}) +
+      '<div class="card">' +
+        '<div class="card-tit">Quiénes y qué</div>' +
+        '<p class="muted">' + aviso + '</p>' +
+        tablaFilas(v.filas, esAhora) + limpiar +
+      '</div>' +
+      '<div id="pedidoPane" class="pedido-pane">' + pedidoPaneHtml(v.pedido, v.horizonte) + '</div>';
+
+    if (esAhora) {
+      wireFilas();
+      var lim = $('cLimpiar');
+      if (lim) lim.addEventListener('click', function () { S.exclusiones = {}; cargarComprar(); });
+    }
+    wirePedidoPane(v.pedido, v.horizonte);
+  }
+
+  function tablaFilas(filas, editable) {
+    if (!filas || !filas.length) return vacio('No hay prendas en este horizonte.');
+    var rows = filas.map(function (f) {
+      var clave = String(f.legajo).toUpperCase().replace(/\s+/g, '') + '|' + f.prenda;
+      var excl = !!S.exclusiones[clave];
+      var accCell = editable
+        ? '<td class="center"><input type="checkbox" class="exc" data-clave="' + esc(clave) + '" ' +
+            (excl ? 'checked' : '') + (f.faltaTalle ? ' disabled' : '') + '></td>'
+        : '';
+      return '<tr class="' + (f.estado === 'CRITICO' ? 'row-critico ' : '') + (excl && editable ? 'excluida' : '') + '">' +
+        '<td>' + esc(f.legajo) + '</td>' +
+        '<td>' + esc(f.nombre) + '</td>' +
+        '<td>' + esc(f.centro || '') + '</td>' +
+        '<td>' + esc(f.prenda) + '</td>' +
+        '<td>' + esc(f.grupo || '') + '</td>' +
+        '<td>' + (f.faltaTalle ? '<span class="badge sindato">falta</span>' : esc(f.talle)) + '</td>' +
+        '<td class="num">' + (f.mesesUso === null ? '—' : f.mesesUso) + '</td>' +
+        '<td>' + esc(f.ultimaEntrega || '—') + '</td>' +
+        '<td>' + badgeEstado(f.estado, f.innegociable) + '</td>' + accCell +
+      '</tr>';
+    }).join('');
+    var headers = ['Legajo', 'Nombre', 'Centro', 'Prenda', 'Grupo', 'Talle', 'Meses', 'Últ. entrega', 'Estado'];
+    if (editable) headers.push('No comprar');
+    return tabla(headers, rows);
+  }
+
+  function wireFilas() {
+    Array.prototype.forEach.call($('comprarBody').querySelectorAll('.exc'), function (chk) {
+      chk.addEventListener('change', function () {
+        var k = chk.getAttribute('data-clave');
+        if (chk.checked) S.exclusiones[k] = true; else delete S.exclusiones[k];
+        var tr = chk.closest('tr'); if (tr) tr.classList.toggle('excluida', chk.checked);
+        programarRefrescoPedido();
+      });
+    });
+  }
+
+  var comprarT, comprarSeq = 0;
+  function programarRefrescoPedido() {
+    var pane = $('pedidoPane'); if (pane) pane.classList.add('actualizando');
+    clearTimeout(comprarT);
+    comprarT = setTimeout(refrescarPedido, 550);
+  }
+  function refrescarPedido() {
+    var seq = ++comprarSeq;
+    api('armarPedido', { exclusiones: Object.keys(S.exclusiones), horizonte: S.horizonteComprar })
+      .then(function (ped) {
+        if (seq !== comprarSeq) return;
+        var pane = $('pedidoPane'); if (!pane) return;
+        pane.classList.remove('actualizando');
+        pane.innerHTML = pedidoPaneHtml(ped, ped.horizonte);
+        wirePedidoPane(ped, ped.horizonte);
+      })
+      .catch(function (e) {
+        if (seq === comprarSeq) { var pane = $('pedidoPane'); if (pane) pane.classList.remove('actualizando'); }
+        manejar(e);
+      });
+  }
+
+  function chipsResumen(r) {
+    return '<div class="chips">' +
+      '<div class="chip cobalto"><b>' + (r.total || 0) + '</b><span>Total</span></div>' +
+      '<div class="chip rojo"><b>' + (r.criticos || 0) + '</b><span>Críticos</span></div>' +
+      '<div class="chip amarillo"><b>' + (r.elegibles || 0) + '</b><span>Elegibles</span></div>' +
+      '<div class="chip"><b>' + (r.sinDato || 0) + '</b><span>Sin dato</span></div>' +
+      '<div class="chip"><b>' + (r.innegociables || 0) + '</b><span>Innegociables</span></div>' +
+      '<div class="chip"><b>' + (r.faltaTalle || 0) + '</b><span>Falta talle</span></div>' +
+    '</div>';
+  }
+
+  function pedidoPaneHtml(p, horizonte) {
+    if (!p) return '';
+    var esAhora = (horizonte !== 'prevision');
+    var t = p.totales || {};
+    var chips = '<div class="chips">' +
+      '<div class="chip cobalto"><b>' + (t.unidades || 0) + '</b><span>Unidades</span></div>' +
+      '<div class="chip"><b>' + (t.PANTALON || 0) + '</b><span>Pantalón</span></div>' +
+      '<div class="chip"><b>' + (t.CAMISA || 0) + '</b><span>Camisa</span></div>' +
+      '<div class="chip"><b>' + (t.BOTIN || 0) + '</b><span>Botín</span></div>' +
+    '</div>';
+
+    var matrices = ['PANTALON', 'CAMISA', 'BOTIN'].map(function (pr) {
+      return matrizHtml(pr, p.matrices[pr]);
+    }).join('');
+
+    var avisos = '';
+    if (p.sinTalle && p.sinTalle.length) {
+      avisos += '<div class="card warn"><div class="card-tit">Sin talle — quedaron afuera (' + p.sinTalle.length + ')</div>' +
+        '<p class="muted">Cargá el talle en Personal para incluirlos en la compra.</p>' +
+        '<div class="muted">' + p.sinTalle.map(function (f) {
+          return esc(f.legajo + ' ' + f.nombre + ' — ' + f.prenda);
+        }).join(' · ') + '</div></div>';
+    }
+
+    var accion = esAhora
+      ? (t.unidades ? '<div class="fila-botones"><button id="pCongelar" class="btn btn-ok">Congelar esta compra</button></div>' : '')
+      : '<p class="muted">Es una previsión: se compra y se congela cuando llegue su corrida. Sirve para anticipar volumen y negociar con proveedores.</p>';
+
+    return '<h3 class="sub-tit">Pedido — ' + (esAhora ? 'a comprar ahora' : 'proyección a ' + (p.dias || 30) + ' días') + '</h3>' +
+      chips +
+      (t.unidades ? matrices : vacio('No hay unidades para pedir (revisá exclusiones y talles).')) +
+      proveedoresHtml(p.proveedores) +
+      avisos +
+      accion;
+  }
+
+  function wirePedidoPane(p, horizonte) {
+    var esAhora = (horizonte !== 'prevision');
+    if (esAhora && p && p.totales && p.totales.unidades) {
+      var btn = $('pCongelar');
+      if (btn) btn.addEventListener('click', function () { confirmarCongelar(p); });
+    }
+  }
+
+  function matrizHtml(prenda, m) {
+    if (!m || !m.total) return '';
+    var th = ['<th>' + prenda + '</th>'].concat(m.grupos.map(function (g) { return '<th class="num">' + esc(g) + '</th>'; }))
+      .concat(['<th class="num total-col">Total</th>']).join('');
+    var body = m.talles.map(function (tl) {
+      var celdas = m.grupos.map(function (g) {
+        var n = (m.celdas[tl] && m.celdas[tl][g]) || 0;
+        return '<td class="num celda">' + (n || '') + '</td>';
+      }).join('');
+      return '<tr><td><b>' + esc(tl) + '</b></td>' + celdas +
+        '<td class="num total-col">' + (m.totalPorTalle[tl] || 0) + '</td></tr>';
+    }).join('');
+    var totalRow = '<tr class="total-row"><td>Total</td>' +
+      m.grupos.map(function (g) { return '<td class="num">' + (m.totalPorGrupo[g] || 0) + '</td>'; }).join('') +
+      '<td class="num total-col">' + m.total + '</td></tr>';
+    return '<div class="card matriz"><div class="card-tit">' + prenda + ' — ' + m.total + ' u.</div>' +
+      '<div class="tabla-wrap"><table class="tabla"><thead><tr>' + th + '</tr></thead><tbody>' +
+      body + totalRow + '</tbody></table></div></div>';
+  }
+
+  function proveedoresHtml(pv) {
+    if (!pv || !pv.hayPrecios) {
+      return '<div class="card"><div class="card-tit">Proveedores</div>' +
+        '<p class="muted">No hay precios cargados en la hoja PROVEEDORES. Cargalos para ver la comparación.</p></div>';
+    }
+    var rows = pv.proveedores.map(function (e) {
+      var es = pv.ganador && pv.ganador.nombre === e.nombre;
+      return '<tr>' +
+        '<td>' + esc(e.nombre) + (es ? ' <span class="pill-ganador">ganador</span>' : '') + '</td>' +
+        '<td class="num">' + (e.completo ? money(e.total) : '<span class="muted">incompleto</span>') + '</td>' +
+        '<td class="muted">' + (e.completo ? '—' : 'no cotiza: ' + esc(e.faltan.join(', '))) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var split = '';
+    if (pv.split && pv.split.completo) {
+      var det = Object.keys(pv.split.porPrenda).map(function (pr) {
+        var x = pv.split.porPrenda[pr];
+        return esc(pr) + ': ' + esc(x.proveedor) + ' (' + money(x.precio) + ')';
+      }).join(' · ');
+      split = '<p class="muted" style="margin-top:10px"><b>Split informativo</b> (cada prenda al más barato): ' +
+        money(pv.split.total) + ' — ' + det +
+        (pv.split.ahorro !== null ? ' · ahorro vs. ganador: ' + money(pv.split.ahorro) : '') +
+        '.<br>No parte el pedido; es solo referencia.</p>';
+    }
+
+    return '<div class="card"><div class="card-tit">Comparación de proveedores</div>' +
+      tabla(['Proveedor', 'Total (todo el pedido)', 'Detalle'], rows) + split + '</div>';
+  }
+
+  function confirmarCongelar(p) {
+    var t = p.totales || {};
+    var g = p.proveedores && p.proveedores.ganador;
+    abrirModal('Congelar compra',
+      '<p>Vas a guardar esta compra en el historial como constancia. No registra entregas ni reinicia relojes.</p>' +
+      '<ul><li><b>' + (t.unidades || 0) + '</b> unidades (' +
+        (t.PANTALON || 0) + ' pant. · ' + (t.CAMISA || 0) + ' cam. · ' + (t.BOTIN || 0) + ' bot.)</li>' +
+        '<li>Proveedor ganador: ' + (g ? esc(g.nombre) + ' (' + money(g.total) + ')' : '—') + '</li></ul>' +
+      '<div class="fila-botones"><button id="mOk" class="btn btn-ok">Confirmar y congelar</button>' +
+        '<button id="mNo" class="btn btn-ghost">Cancelar</button></div>');
+    $('mNo').addEventListener('click', cerrarModal);
+    $('mOk').addEventListener('click', function () {
+      $('mOk').disabled = true;
+      api('congelarCompra', { exclusiones: Object.keys(S.exclusiones) }).then(function (r) {
+        cerrarModal();
+        S.exclusiones = {};
+        toast('Compra congelada: ' + r.id + '.', 'ok');
+        ir('historial');
+      }).catch(function (e) { $('mOk').disabled = false; manejar(e); });
+    });
+  }
+
+  /* ---------- Cruce RRHH (sub-pestaña de Personal) ---------- */
+  function pintarCruceRRHH() {
+    $('perBody').innerHTML =
+      '<p class="seccion-sub">Pegá el listado vigente de RRHH (legajo, nombre, categoría). El cruce es por legajo. El sistema sugiere; vos confirmás cada alta/baja.</p>' +
+      '<div class="card">' +
+        '<label class="campo"><span>Listado pegado (una persona por línea)</span>' +
+          '<textarea id="rTexto" placeholder="12345&#9;PEREZ JUAN&#9;OFICIAL"></textarea></label>' +
+        '<button id="rCruzar" class="btn btn-primary">Cruzar</button>' +
+      '</div>' +
+      '<div id="rResultado"></div>';
+    $('rCruzar').addEventListener('click', function () {
+      var texto = $('rTexto').value;
+      if (!texto.trim()) { toast('Pegá el listado primero.', 'err'); return; }
+      $('rResultado').innerHTML = cargando();
+      api('cruzarRRHH', { texto: texto }).then(pintarCruce).catch(function (e) {
+        $('rResultado').innerHTML = '<div class="error">' + esc(e.message) + '</div>';
+      });
+    });
+  }
+
+  function pintarCruce(c) {
+    var r = c.resumen || {};
+    var chips = '<div class="chips">' +
+      '<div class="chip cobalto"><b>' + (r.leidos || 0) + '</b><span>Leídos</span></div>' +
+      '<div class="chip rojo"><b>' + (r.bajas || 0) + '</b><span>Bajas</span></div>' +
+      '<div class="chip amarillo"><b>' + (r.altas || 0) + '</b><span>Altas</span></div>' +
+      '<div class="chip"><b>' + (r.coinciden || 0) + '</b><span>Coinciden</span></div>' +
+    '</div>';
+
+    var bajas = c.bajas.map(function (b) {
+      return '<tr><td class="center"><input type="checkbox" class="cb-baja" data-legajo="' + esc(b.legajo) + '"></td>' +
+        '<td>' + esc(b.legajo) + '</td><td>' + esc(b.nombre) + '</td><td>' + esc(b.categoria || '') + '</td>' +
+        '<td class="muted">' + esc(b.talles || '') + '</td></tr>';
+    }).join('');
+    var tBajas = c.bajas.length
+      ? '<div class="card"><div class="card-tit">Bajas sugeridas — están en PERSONAL pero no en el listado</div>' +
+        tabla(['Baja', 'Legajo', 'Nombre', 'Categoría', 'Talles guardados'], bajas) + '</div>'
+      : '';
+
+    var altas = c.altas.map(function (a) {
+      var info = a.motivo === 'REINGRESO'
+        ? '<span class="badge tag">REINGRESO</span> <span class="muted">talle guardado: ' + esc(a.talleGuardado || '—') + '</span>'
+        : '<span class="badge sindato">NUEVO</span> <span class="muted">sin talle (cargar luego)</span>';
+      return '<tr><td class="center"><input type="checkbox" class="cb-alta" data-legajo="' + esc(a.legajo) + '" ' +
+          'data-nombre="' + esc(a.nombre || '') + '" data-categoria="' + esc(a.categoria || '') + '"></td>' +
+        '<td>' + esc(a.legajo) + '</td><td>' + esc(a.nombre || '') + '</td><td>' + esc(a.categoria || '') + '</td>' +
+        '<td>' + info + '</td></tr>';
+    }).join('');
+    var tAltas = c.altas.length
+      ? '<div class="card"><div class="card-tit">Altas sugeridas — están en el listado pero no activas en PERSONAL</div>' +
+        tabla(['Alta', 'Legajo', 'Nombre', 'Categoría', 'Detalle'], altas) + '</div>'
+      : '';
+
+    var coin = c.coinciden.map(function (m) {
+      return '<tr><td>' + esc(m.legajo) + '</td><td>' + esc(m.nombre) + '</td>' +
+        '<td>' + esc(m.categoriaPersonal || '') + '</td>' +
+        '<td>' + (m.difCategoria
+          ? '<span class="badge elegible">cambió</span> ' + esc(m.categoriaRRHH)
+          : esc(m.categoriaRRHH || '<span class="muted">igual</span>')) + '</td></tr>';
+    }).join('');
+    var tCoin = c.coinciden.length
+      ? '<div class="card"><div class="card-tit">Coinciden (' + c.coinciden.length + ')</div>' +
+        tabla(['Legajo', 'Nombre', 'Cat. PERSONAL', 'Cat. RRHH'], coin) +
+        '<p class="muted">El cruce no cambia categorías solo; si querés actualizarlas, hacelo en Personal.</p></div>'
+      : '';
+
+    $('rResultado').innerHTML = chips + tBajas + tAltas + tCoin +
+      ((c.bajas.length || c.altas.length)
+        ? '<div class="fila-botones"><button id="rAplicar" class="btn btn-primary">Aplicar seleccionados</button></div>'
+        : '');
+
+    if (c.bajas.length || c.altas.length) {
+      $('rAplicar').addEventListener('click', aplicarCruce);
+    }
+  }
+
+  function aplicarCruce() {
+    var cambios = [];
+    Array.prototype.forEach.call($('rResultado').querySelectorAll('.cb-baja:checked'), function (chk) {
+      cambios.push({ legajo: chk.getAttribute('data-legajo'), accion: 'DAR DE BAJA' });
+    });
+    Array.prototype.forEach.call($('rResultado').querySelectorAll('.cb-alta:checked'), function (chk) {
+      cambios.push({
+        legajo: chk.getAttribute('data-legajo'), accion: 'DAR DE ALTA',
+        nombre: chk.getAttribute('data-nombre'), categoria: chk.getAttribute('data-categoria')
+      });
+    });
+    if (!cambios.length) { toast('No seleccionaste ningún cambio.', 'err'); return; }
+    if (!window.confirm('Vas a aplicar ' + cambios.length + ' cambio(s) en PERSONAL. ¿Confirmás?')) return;
+    $('rAplicar').disabled = true;
+    api('aplicarCambiosCruce', { cambios: cambios }).then(function (res) {
+      var ok = res.resultados.filter(function (x) { return x.ok; }).length;
+      toast('Aplicados ' + ok + '/' + res.resultados.length + ' cambios.', 'ok');
+      $('rCruzar').click(); // re-cruzar para refrescar
+    }).catch(function (e) { $('rAplicar').disabled = false; manejar(e); });
+  }
+
+  /* ---------- Historial ---------- */
+  RENDER.historial = function () {
+    $('vista').innerHTML = '<h2 class="seccion-tit">Historial de compras</h2>' +
+      '<p class="seccion-sub">Compras congeladas. Cada fila es una corrida cerrada.</p>' + cargando();
+    api('listarHistorial').then(function (lista) {
+      if (!lista.length) { $('vista').innerHTML = encabezadoHist() + vacio('Todavía no congelaste ninguna compra.'); return; }
+      var rows = lista.map(function (h) {
+        return '<tr data-id="' + esc(h.id) + '" class="hist-row" style="cursor:pointer">' +
+          '<td>' + esc(h.id) + '</td><td>' + esc(h.fechaCorrida) + '</td><td>' + esc(h.fechaCongelado) + '</td>' +
+          '<td>' + esc(h.usuario) + '</td>' +
+          '<td class="num">' + h.totalUnidades + '</td>' +
+          '<td>' + esc(h.proveedorGanador || '—') + '</td>' +
+          '<td class="num">' + money(h.costoGanador) + '</td></tr>';
+      }).join('');
+      $('vista').innerHTML = encabezadoHist() +
+        tabla(['ID', 'Corrida', 'Congelado', 'Usuario', 'Unid.', 'Ganador', 'Costo'], rows);
+      Array.prototype.forEach.call($('vista').querySelectorAll('.hist-row'), function (tr) {
+        tr.addEventListener('click', function () { verDetalleHist(tr.getAttribute('data-id')); });
+      });
+    }).catch(manejar);
+  };
+  function encabezadoHist() {
+    return '<h2 class="seccion-tit">Historial de compras</h2>' +
+      '<p class="seccion-sub">Compras congeladas. Tocá una fila para ver el detalle.</p>';
+  }
+  function verDetalleHist(id) {
+    abrirModal('Detalle ' + id, cargando());
+    api('detalleHistorial', { id: id }).then(function (d) {
+      var det = d.detalle || {};
+      var t = det.totales || {};
+      var g = det.proveedores && det.proveedores.ganador;
+      var matr = ['PANTALON', 'CAMISA', 'BOTIN'].map(function (pr) {
+        return det.matrices ? matrizHtml(pr, det.matrices[pr]) : '';
+      }).join('');
+      $('modalCuerpo').innerHTML =
+        '<p><b>Corrida:</b> ' + esc(d.fechaCorrida) + ' · <b>Congelado:</b> ' + esc(d.fechaCongelado) +
+          ' · <b>Por:</b> ' + esc(d.usuario) + '</p>' +
+        '<p><b>Totales:</b> ' + (t.unidades || 0) + ' u (' + (t.PANTALON || 0) + '/' + (t.CAMISA || 0) + '/' + (t.BOTIN || 0) + ')' +
+          ' · <b>Ganador:</b> ' + (g ? esc(g.nombre) + ' ' + money(g.total) : '—') + '</p>' +
+        (matr || vacio('Sin matrices guardadas.'));
+    }).catch(function (e) { $('modalCuerpo').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
+  }
+
+  /* ---------- Roturas ---------- */
+  RENDER.roturas = function () {
+    $('vista').innerHTML = '<h2 class="seccion-tit">Reporte de roturas</h2>' +
+      '<p class="seccion-sub">Roturas registradas y su antigüedad al romperse.</p>' + cargando();
+    api('reporteRoturas').then(function (rep) {
+      var r = rep.resumen || {};
+      var chips = '<div class="chips">' +
+        '<div class="chip cobalto"><b>' + (r.total || 0) + '</b><span>Roturas</span></div>' +
+        '<div class="chip rojo"><b>' + (r.tempranas || 0) + '</b><span>Tempranas</span></div>' +
+        '<div class="chip"><b>' + (r.tardias || 0) + '</b><span>Tardías</span></div>' +
+        '<div class="chip"><b>' + (r.sinReferencia || 0) + '</b><span>Sin referencia</span></div>' +
+      '</div>' +
+      '<p class="muted">“Temprana” = se rompió antes de ' + (r.umbralTardiaMeses || 0) +
+        ' meses de uso (vida útil − cadencia). Es la que conviene vigilar.</p>';
+
+      var porLeg = rep.porLegajo.map(function (x) {
+        return '<tr><td>' + esc(x.legajo) + '</td><td>' + esc(x.nombre || '') + '</td><td>' + esc(x.centro || '') + '</td>' +
+          '<td class="num">' + x.total + '</td><td class="num">' + x.tempranas + '</td><td class="num">' + x.tardias + '</td>' +
+          '<td class="num">' + x.PANTALON + '/' + x.CAMISA + '/' + x.BOTIN + '</td></tr>';
+      }).join('');
+      var porCen = rep.porCentro.map(function (x) {
+        return '<tr><td>' + esc(x.centro || '') + '</td>' +
+          '<td class="num">' + x.total + '</td><td class="num">' + x.tempranas + '</td><td class="num">' + x.tardias + '</td>' +
+          '<td class="num">' + x.PANTALON + '/' + x.CAMISA + '/' + x.BOTIN + '</td></tr>';
+      }).join('');
+      var eventos = rep.eventos.map(function (e) {
+        return '<tr class="' + (e.temprana ? 'row-critico' : '') + '"><td>' + esc(e.fecha) + '</td>' +
+          '<td>' + esc(e.legajo) + '</td><td>' + esc(e.nombre || '') + '</td><td>' + esc(e.prenda) + '</td>' +
+          '<td class="num">' + (e.edadMeses === null ? '—' : e.edadMeses) + '</td>' +
+          '<td>' + (e.edadMeses === null ? '<span class="badge sindato">s/ref</span>'
+            : (e.tardia ? '<span class="badge tag">tardía</span>' : '<span class="badge critico">temprana</span>')) + '</td>' +
+          '<td class="muted">' + esc(e.observaciones || '') + '</td></tr>';
+      }).join('');
+
+      $('vista').innerHTML = '<h2 class="seccion-tit">Reporte de roturas</h2>' +
+        '<p class="seccion-sub">Roturas registradas y su antigüedad al romperse.</p>' + chips +
+        (rep.eventos.length ? (
+          '<div class="card"><div class="card-tit">Por operario</div>' +
+            tabla(['Legajo', 'Nombre', 'Centro', 'Total', 'Tempr.', 'Tard.', 'P/C/B'], porLeg) + '</div>' +
+          '<div class="card"><div class="card-tit">Por centro de costo</div>' +
+            tabla(['Centro', 'Total', 'Tempr.', 'Tard.', 'P/C/B'], porCen) + '</div>' +
+          '<div class="card"><div class="card-tit">Detalle de roturas</div>' +
+            tabla(['Fecha', 'Legajo', 'Nombre', 'Prenda', 'Edad (m)', 'Tipo', 'Obs.'], eventos) + '</div>'
+        ) : vacio('No hay roturas registradas (motivo ROTURA en entregas).'));
+    }).catch(manejar);
+  };
+
+  /* ---------- Personal ---------- */
+  RENDER.personal = function () {
+    $('vista').innerHTML = '<h2 class="seccion-tit">Personal</h2>' +
+      '<p class="seccion-sub">Padrón y cruce con RRHH. Los talles se cargan acá. La baja desactiva, no borra.</p>' +
+      '<div id="perTabs"></div>' +
+      '<div id="perBody"></div>';
+    pintarPerTabs();
+    pintarPerVista();
+  };
+  function pintarPerTabs() {
+    var t = S.personalTab;
+    $('perTabs').innerHTML = '<div class="seg">' +
+      '<button class="seg-btn ' + (t === 'padron' ? 'activo' : '') + '" data-t="padron">Padrón</button>' +
+      '<button class="seg-btn ' + (t === 'cruce' ? 'activo' : '') + '" data-t="cruce">Cruce con RRHH</button>' +
+    '</div>';
+    Array.prototype.forEach.call($('perTabs').querySelectorAll('.seg-btn'), function (b) {
+      b.addEventListener('click', function () {
+        var nt = b.getAttribute('data-t');
+        if (nt === S.personalTab) return;
+        S.personalTab = nt;
+        pintarPerTabs();
+        pintarPerVista();
+      });
+    });
+  }
+  function pintarPerVista() {
+    if (S.personalTab === 'cruce') pintarCruceRRHH();
+    else pintarPadron();
+  }
+  function pintarPadron() {
+    var sinTalleIni = !!S.personalSoloSinTalle;
+    S.personalSoloSinTalle = false; // one-shot: si vino del tablero, se consume acá
+    $('perBody').innerHTML =
+      '<div class="fila-botones"><button id="pNuevo" class="btn btn-primary">+ Nuevo operario</button>' +
+        '<label class="inline"><input type="checkbox" id="pSoloAct"> Ver solo activos</label>' +
+        '<label class="inline"><input type="checkbox" id="pSinTalle"' + (sinTalleIni ? ' checked' : '') + '> Solo sin talle</label></div>' +
+      '<div id="pLista">' + cargando() + '</div>';
+    $('pNuevo').addEventListener('click', function () { formOperario(null); });
+    $('pSoloAct').addEventListener('change', cargarPersonal);
+    $('pSinTalle').addEventListener('change', cargarPersonal);
+    cargarPersonal();
+  }
+  function leFaltaTalle(o) {
+    return !String(o['TALLE PANT'] || '').trim() ||
+           !String(o['TALLE CAM'] || '').trim() ||
+           !String(o['TALLE BOTÍN'] || '').trim();
+  }
+  function celdaTalle(v) {
+    var s = String(v == null ? '' : v).trim();
+    return s ? esc(s) : '<span class="falta-talle">—</span>';
+  }
+  function cargarPersonal() {
+    var soloActivos = $('pSoloAct') && $('pSoloAct').checked;
+    var soloSinTalle = $('pSinTalle') && $('pSinTalle').checked;
+    api('listarPersonal', { soloActivos: soloActivos }).then(function (lista) {
+      // Mapa completo para la edición rápida (antes de filtrar lo que se muestra).
+      S._personal = {};
+      lista.forEach(function (o) { S._personal[String(o['LEGAJO'])] = o; });
+
+      var visibles = soloSinTalle ? lista.filter(leFaltaTalle) : lista;
+      if (!visibles.length) {
+        $('pLista').innerHTML = vacio(soloSinTalle ? '👌 Nadie sin talle con este filtro.' : 'No hay operarios.');
+        return;
+      }
+      var rows = visibles.map(function (o) {
+        var leg = o['LEGAJO'];
+        var activo = /^s[ií]$|^true$|^x$|^1$/i.test(String(o['ACTIVO']).trim());
+        return '<tr>' +
+          '<td>' + esc(leg) + '</td>' +
+          '<td>' + esc(o['APELLIDO Y NOMBRE']) + '</td>' +
+          '<td>' + esc(o['CATEGORÍA'] || '') + '</td>' +
+          '<td>' + esc(o['CENTRO DE COSTO'] || '') + '</td>' +
+          '<td>' + esc(o['COLOR ROPA'] || '') + '</td>' +
+          '<td class="muted">' + celdaTalle(o['TALLE PANT']) + ' / ' + celdaTalle(o['TALLE CAM']) + ' / ' + celdaTalle(o['TALLE BOTÍN']) + '</td>' +
+          '<td>' + (activo ? '<span class="badge elegible">activo</span>' : '<span class="badge sindato">inactivo</span>') + '</td>' +
+          '<td><button class="btn btn-sm btn-ghost pEdit" data-legajo="' + esc(leg) + '">Editar</button> ' +
+            '<button class="btn btn-sm pToggle" data-legajo="' + esc(leg) + '" data-activo="' + (activo ? '1' : '0') + '">' +
+              (activo ? 'Baja' : 'Alta') + '</button></td>' +
+        '</tr>';
+      }).join('');
+      $('pLista').innerHTML =
+        '<p class="muted">' + visibles.length + ' operario(s)' + (soloSinTalle ? ' sin talle completo' : '') + '.</p>' +
+        tabla(['Legajo', 'Nombre', 'Categoría', 'Centro', 'Color', 'Talles P/C/B', 'Estado', ''], rows);
+
+      Array.prototype.forEach.call($('pLista').querySelectorAll('.pEdit'), function (b) {
+        b.addEventListener('click', function () { formOperario(S._personal[b.getAttribute('data-legajo')]); });
+      });
+      Array.prototype.forEach.call($('pLista').querySelectorAll('.pToggle'), function (b) {
+        b.addEventListener('click', function () {
+          var activar = b.getAttribute('data-activo') !== '1';
+          api('setActivoOperario', { legajo: b.getAttribute('data-legajo'), activo: activar }).then(function () {
+            toast(activar ? 'Reactivado.' : 'Dado de baja.', 'ok');
+            cargarPersonal();
+          }).catch(manejar);
+        });
+      });
+    }).catch(function (e) { $('pLista').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
+  }
+
+  function lst(key) { return (S.listas && S.listas[key]) || []; }
+  function dataList(id, key) {
+    return '<datalist id="' + id + '">' + lst(key).map(function (v) {
+      return '<option value="' + esc(v) + '">';
+    }).join('') + '</datalist>';
+  }
+  function campo(label, id, valor, listaId) {
+    return '<label class="campo"><span>' + esc(label) + '</span>' +
+      '<input id="' + id + '" type="text" value="' + esc(valor || '') + '"' +
+      (listaId ? ' list="' + listaId + '"' : '') + '></label>';
+  }
+
+  function formOperario(o) {
+    var esNuevo = !o;
+    var v = function (k) { return o ? (o[k] || '') : ''; };
+    var html =
+      dataList('dlCat', 'CATEGORIA') + dataList('dlCen', 'CENTRO DE COSTO') +
+      dataList('dlCol', 'COLOR ROPA') + dataList('dlBot', 'TIPO BOTIN') +
+      dataList('dlTP', 'TALLE PANT') + dataList('dlTC', 'TALLE CAM') + dataList('dlTB', 'TALLE BOTIN') +
+      '<div class="grid2">' +
+        '<label class="campo"><span>Legajo</span><input id="oLegajo" type="text" value="' + esc(v('LEGAJO')) + '"' +
+          (esNuevo ? '' : ' disabled') + '></label>' +
+        campo('Apellido y nombre', 'oNombre', v('APELLIDO Y NOMBRE')) +
+      '</div>' +
+      '<div class="grid2">' +
+        campo('Categoría', 'oCat', v('CATEGORÍA'), 'dlCat') +
+        campo('Centro de costo', 'oCen', v('CENTRO DE COSTO'), 'dlCen') +
+      '</div>' +
+      '<div class="grid2">' +
+        campo('Color ropa', 'oColor', v('COLOR ROPA'), 'dlCol') +
+        campo('Tipo botín', 'oTipoBot', v('TIPO BOTÍN'), 'dlBot') +
+      '</div>' +
+      '<div class="grid2">' +
+        campo('Talle pantalón', 'oTP', v('TALLE PANT'), 'dlTP') +
+        campo('Talle camisa', 'oTC', v('TALLE CAM'), 'dlTC') +
+      '</div>' +
+      '<div class="grid2">' +
+        campo('Talle botín', 'oTB', v('TALLE BOTÍN'), 'dlTB') +
+        '<label class="campo"><span>&nbsp;</span><span class="muted">' +
+          (esNuevo ? 'Se crea activo.' : 'El estado se cambia desde la lista.') + '</span></label>' +
+      '</div>' +
+      campo('Observaciones', 'oObs', v('OBSERVACIONES')) +
+      '<div class="fila-botones"><button id="oGuardar" class="btn btn-primary">' +
+        (esNuevo ? 'Crear operario' : 'Guardar cambios') + '</button>' +
+        '<button id="oCancelar" class="btn btn-ghost">Cancelar</button></div>';
+
+    abrirModal(esNuevo ? 'Nuevo operario' : 'Editar ' + v('LEGAJO'), html);
+    $('oCancelar').addEventListener('click', cerrarModal);
+    $('oGuardar').addEventListener('click', function () { guardarOperario(esNuevo); });
+  }
+
+  function guardarOperario(esNuevo) {
+    var datos = {
+      nombre: $('oNombre').value.trim(),
+      categoria: $('oCat').value.trim(),
+      centro: $('oCen').value.trim(),
+      color: $('oColor').value.trim(),
+      tipoBotin: $('oTipoBot').value.trim(),
+      tallePant: $('oTP').value.trim(),
+      talleCam: $('oTC').value.trim(),
+      talleBotin: $('oTB').value.trim(),
+      observaciones: $('oObs').value.trim()
+    };
+    $('oGuardar').disabled = true;
+    var prom;
+    if (esNuevo) {
+      var legajo = $('oLegajo').value.trim();
+      if (!legajo) { toast('El legajo es obligatorio.', 'err'); $('oGuardar').disabled = false; return; }
+      datos.legajo = legajo;
+      prom = api('crearOperario', { datos: datos });
+    } else {
+      prom = api('actualizarOperario', { legajo: $('oLegajo').value.trim(), datos: datos });
+    }
+    prom.then(function () {
+      cerrarModal();
+      toast(esNuevo ? 'Operario creado.' : 'Cambios guardados.', 'ok');
+      cargarPersonal();
+    }).catch(function (e) { $('oGuardar').disabled = false; manejar(e); });
+  }
+
+  /* ---------- Ajustes (PIN, parámetros, proveedores, listas) ---------- */
+  var LISTAS_COLS = [
+    { key: 'COLOR ROPA', label: 'Color de ropa' },
+    { key: 'TIPO BOTIN', label: 'Tipo de botín' },
+    { key: 'CATEGORIA', label: 'Categoría' },
+    { key: 'CENTRO DE COSTO', label: 'Centro de costo' },
+    { key: 'TALLE PANT', label: 'Talles pantalón' },
+    { key: 'TALLE CAM', label: 'Talles camisa' },
+    { key: 'TALLE BOTIN', label: 'Talles botín' }
+  ];
+  var ajProvState = { prendas: ['PANTALON', 'CAMISA', 'BOTIN'], filas: [] };
+
+  RENDER.ajustes = function () {
+    $('vista').innerHTML =
+      '<h2 class="seccion-tit">Ajustes</h2>' +
+      '<p class="seccion-sub">Todo se edita acá: PIN, parámetros de cálculo, proveedores y listas. Sin tocar la planilla.</p>' +
+      '<div id="ajPin"></div>' +
+      '<div id="ajParam"></div>' +
+      '<div id="ajProv"></div>' +
+      '<div id="ajListas"></div>';
+    pintarAjPin();
+    pintarAjParametros();
+    cargarAjProveedores();
+    pintarAjListas();
+  };
+
+  /* --- PIN --- */
+  function pintarAjPin() {
+    $('ajPin').innerHTML =
+      '<h3 class="sub-tit">PIN de acceso</h3>' +
+      '<p class="muted">Cuatro dígitos. Lo usan todos para entrar; cambialo cuando haga falta.</p>' +
+      '<div class="card" style="max-width:640px">' +
+        '<div class="grid2">' +
+          '<label class="campo"><span>PIN nuevo</span><input id="ajPin1" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></label>' +
+          '<label class="campo"><span>Repetir PIN</span><input id="ajPin2" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></label>' +
+        '</div>' +
+        '<button id="ajPinGuardar" class="btn btn-primary btn-block">Cambiar PIN</button>' +
+      '</div>';
+    $('ajPinGuardar').addEventListener('click', function () {
+      var a = $('ajPin1').value.trim(), b = $('ajPin2').value.trim();
+      if (!/^\d{4}$/.test(a)) { toast('El PIN debe tener 4 dígitos.', 'err'); return; }
+      if (a !== b) { toast('Los dos PIN no coinciden.', 'err'); return; }
+      var btn = $('ajPinGuardar'); btn.disabled = true;
+      api('cambiarPinAcceso', { pinNuevo: a }).then(function () {
+        toast('PIN cambiado.', 'ok');
+        $('ajPin1').value = ''; $('ajPin2').value = '';
+        btn.disabled = false;
+      }).catch(function (e) { btn.disabled = false; manejar(e); });
+    });
+  }
+
+  /* --- Parámetros de cálculo --- */
+  function pintarAjParametros() {
+    var c = S.config || {};
+    $('ajParam').innerHTML =
+      '<h3 class="sub-tit" style="margin-top:18px">Parámetros de cálculo</h3>' +
+      '<p class="muted">Definen cuándo una prenda entra a una corrida. El techo se calcula solo (vida útil + cadencia).</p>' +
+      '<div class="card" style="max-width:640px">' +
+        '<div class="grid2">' +
+          '<label class="campo"><span>Vida útil (meses)</span><input id="apVida" type="number" min="1" step="1" value="' + esc(c.vidaUtil) + '"></label>' +
+          '<label class="campo"><span>Cadencia (meses)</span><input id="apCad" type="number" min="1" step="1" value="' + esc(c.cadencia) + '"></label>' +
+        '</div>' +
+        '<div class="grid2">' +
+          '<label class="campo"><span>Días de previsión</span><input id="apDias" type="number" min="0" step="1" value="' + esc(c.diasPrevision) + '"></label>' +
+          '<label class="campo"><span>Fecha ancla de corridas</span><input id="apFecha" type="date" value="' + esc(fechaAInput(c.fechaAncla)) + '"></label>' +
+        '</div>' +
+        '<p class="muted">Techo duro: <b id="apTecho">' + esc(c.techo) + '</b> meses. Pasado ese punto la prenda es innegociable.</p>' +
+        '<button id="apGuardar" class="btn btn-primary btn-block">Guardar parámetros</button>' +
+      '</div>';
+    function recalcTecho() {
+      var v = Number($('apVida').value), cd = Number($('apCad').value);
+      $('apTecho').textContent = (isFinite(v) && isFinite(cd) && $('apVida').value !== '' && $('apCad').value !== '') ? (v + cd) : '—';
+    }
+    $('apVida').addEventListener('input', recalcTecho);
+    $('apCad').addEventListener('input', recalcTecho);
+    $('apGuardar').addEventListener('click', function () {
+      var datos = {
+        vidaUtil: $('apVida').value,
+        cadencia: $('apCad').value,
+        diasPrevision: $('apDias').value,
+        fechaAncla: inputAFecha($('apFecha').value)
+      };
+      var btn = $('apGuardar'); btn.disabled = true;
+      api('guardarParametros', { datos: datos }).then(function () {
+        return api('getConfig');
+      }).then(function (cfg) {
+        S.config = cfg;
+        toast('Parámetros guardados.', 'ok');
+        pintarAjParametros();
+      }).catch(function (e) { btn.disabled = false; manejar(e); });
+    });
+  }
+
+  /* --- Proveedores y precios --- */
+  function cargarAjProveedores() {
+    $('ajProv').innerHTML = '<h3 class="sub-tit" style="margin-top:18px">Proveedores y precios</h3>' + cargando();
+    api('listarProveedores').then(pintarAjProveedores).catch(function (e) {
+      $('ajProv').innerHTML = '<h3 class="sub-tit" style="margin-top:18px">Proveedores y precios</h3>' +
+        '<div class="error">' + esc(e.message) + '</div>';
+    });
+  }
+  function pintarAjProveedores(data) {
+    data = data || {};
+    ajProvState = {
+      prendas: data.prendas || ['PANTALON', 'CAMISA', 'BOTIN'],
+      filas: (data.proveedores || []).map(function (p) {
+        var pr = p.precios || {};
+        return { nombre: p.nombre || '', precios: {
+          PANTALON: numOrEmpty(pr.PANTALON), CAMISA: numOrEmpty(pr.CAMISA), BOTIN: numOrEmpty(pr.BOTIN)
+        } };
+      })
+    };
+    renderAjProvTabla();
+  }
+  function renderAjProvTabla() {
+    var st = ajProvState;
+    var head = '<tr><th>Proveedor</th>' + st.prendas.map(function (pr) { return '<th>' + esc(pr) + '</th>'; }).join('') + '<th></th></tr>';
+    var rows = st.filas.map(function (f, i) {
+      var celdas = st.prendas.map(function (pr) {
+        return '<td><input type="number" min="0" step="0.01" class="apv-precio" data-i="' + i + '" data-pr="' + pr + '" value="' + esc(f.precios[pr]) + '" style="width:108px"></td>';
+      }).join('');
+      return '<tr><td><input type="text" class="apv-nombre" data-i="' + i + '" value="' + esc(f.nombre) + '" placeholder="Nombre"></td>' +
+        celdas + '<td><button class="btn btn-ghost apv-quitar" data-i="' + i + '">Quitar</button></td></tr>';
+    }).join('');
+    var puedeAgregar = st.filas.length < 5;
+    $('ajProv').innerHTML =
+      '<h3 class="sub-tit" style="margin-top:18px">Proveedores y precios</h3>' +
+      '<p class="muted">Hasta 5 proveedores. Precio por prenda (no varía por color ni talle). Dejá vacío lo que no cotiza.</p>' +
+      '<div class="card">' +
+        '<div class="tabla-wrap"><table class="tabla"><thead>' + head + '</thead><tbody>' +
+          (rows || '<tr><td colspan="5" class="muted">Todavía no hay proveedores. Agregá uno.</td></tr>') + '</tbody></table></div>' +
+        '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+          (puedeAgregar ? '<button id="apvAgregar" class="btn btn-ghost">+ Proveedor</button>' : '') +
+          '<button id="apvGuardar" class="btn btn-primary">Guardar proveedores</button>' +
+        '</div>' +
+      '</div>';
+    Array.prototype.forEach.call($('ajProv').querySelectorAll('.apv-nombre'), function (inp) {
+      inp.addEventListener('input', function () { ajProvState.filas[Number(inp.getAttribute('data-i'))].nombre = inp.value; });
+    });
+    Array.prototype.forEach.call($('ajProv').querySelectorAll('.apv-precio'), function (inp) {
+      inp.addEventListener('input', function () {
+        ajProvState.filas[Number(inp.getAttribute('data-i'))].precios[inp.getAttribute('data-pr')] = inp.value;
+      });
+    });
+    Array.prototype.forEach.call($('ajProv').querySelectorAll('.apv-quitar'), function (b) {
+      b.addEventListener('click', function () {
+        ajProvState.filas.splice(Number(b.getAttribute('data-i')), 1);
+        renderAjProvTabla();
+      });
+    });
+    if (puedeAgregar) $('apvAgregar').addEventListener('click', function () {
+      ajProvState.filas.push({ nombre: '', precios: { PANTALON: '', CAMISA: '', BOTIN: '' } });
+      renderAjProvTabla();
+    });
+    $('apvGuardar').addEventListener('click', guardarAjProveedores);
+  }
+  function guardarAjProveedores() {
+    var proveedores = ajProvState.filas
+      .filter(function (f) { return String(f.nombre || '').trim(); })
+      .map(function (f) {
+        return { nombre: String(f.nombre).trim(), precios: {
+          PANTALON: aPrecioGuardar(f.precios.PANTALON),
+          CAMISA: aPrecioGuardar(f.precios.CAMISA),
+          BOTIN: aPrecioGuardar(f.precios.BOTIN)
+        } };
+      });
+    var btn = $('apvGuardar'); btn.disabled = true;
+    api('guardarProveedores', { datos: { proveedores: proveedores } }).then(function () {
+      toast('Proveedores guardados.', 'ok');
+      cargarAjProveedores();
+    }).catch(function (e) { btn.disabled = false; manejar(e); });
+  }
+
+  /* --- Listas --- */
+  function pintarAjListas() {
+    var L = S.listas || {};
+    var cajas = LISTAS_COLS.map(function (col) {
+      var vals = (L[col.key] || []).join('\n');
+      return '<label class="campo"><span>' + esc(col.label) + '</span>' +
+        '<textarea class="ajLista" data-key="' + esc(col.key) + '" style="min-height:90px" placeholder="Un valor por línea">' + esc(vals) + '</textarea></label>';
+    }).join('');
+    $('ajListas').innerHTML =
+      '<h3 class="sub-tit" style="margin-top:18px">Listas</h3>' +
+      '<p class="muted">Opciones de los selectores de Personal (colores, tipos de botín, categorías, centros, talles). Un valor por línea.</p>' +
+      '<div class="card"><div class="grid2">' + cajas + '</div>' +
+        '<button id="ajListasGuardar" class="btn btn-primary btn-block">Guardar listas</button>' +
+      '</div>';
+    $('ajListasGuardar').addEventListener('click', function () {
+      var datos = {};
+      Array.prototype.forEach.call($('ajListas').querySelectorAll('.ajLista'), function (ta) {
+        datos[ta.getAttribute('data-key')] = ta.value.split('\n')
+          .map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+      });
+      var btn = $('ajListasGuardar'); btn.disabled = true;
+      api('guardarListas', { datos: datos }).then(function () {
+        return api('getListas');
+      }).then(function (listas) {
+        S.listas = listas || {};
+        toast('Listas guardadas.', 'ok');
+        pintarAjListas();
+      }).catch(function (e) { btn.disabled = false; manejar(e); });
+    });
+  }
+
+  /* --- helpers de Ajustes --- */
+  function fechaAInput(v) {
+    var m = String(v || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m) return '';
+    var yy = m[3].length === 2 ? '20' + m[3] : m[3];
+    return yy + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  }
+  function numOrEmpty(v) { return (v === null || v === undefined || v === '') ? '' : String(v); }
+  function aPrecioGuardar(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (s === '') return '';
+    var n = Number(s);
+    return isFinite(n) ? n : s; // inválido: lo manda igual y el backend devuelve el mensaje claro
+  }
+
+  /* ===================== Wire global ===================== */
+  document.addEventListener('DOMContentLoaded', function () {
+    $('btnLogin').addEventListener('click', hacerLogin);
+    $('loginPin').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') hacerLogin(); });
+    $('btnSalir').addEventListener('click', salir);
+    var marca = $('marca');
+    if (marca) marca.addEventListener('click', function () { if (S.token) ir('tablero'); });
+    $('modalCerrar').addEventListener('click', cerrarModal);
+    $('modal').addEventListener('click', function (ev) { if (ev.target === $('modal')) cerrarModal(); });
+
+    // Reanudar sesión si quedó guardada
+    var tok = null, usr = null;
+    try { tok = sessionStorage.getItem('ropa_token'); usr = sessionStorage.getItem('ropa_user'); } catch (e) {}
+    if (tok) { S.token = tok; S.usuario = usr || ''; iniciarApp(); }
+    else { $('loginPin').focus(); }
+  });
+})();
+</script>
 </body>
 </html>
