@@ -264,6 +264,14 @@
   tr.row-critico td { background: rgba(192,57,43,.05); }
   tr.excluida td { opacity: .45; text-decoration: line-through; }
 
+  /* Motivo de no-compra: input visible solo en filas destildadas (excluidas) */
+  .mnc-cell { min-width: 180px; }
+  tr.excluida td.mnc-cell { opacity: 1; text-decoration: none; }
+  .mnc-input { display: none; width: 100%; min-width: 150px; padding: 5px 8px; font-size: 13px; }
+  tr.excluida .mnc-input { display: block; }
+  .mnc-saved { color: var(--gris); font-size: 12px; }
+  tr.excluida .mnc-saved { display: none; }
+
   /* ---------- Matriz de pedido ---------- */
   .matriz { margin-bottom: 18px; }
   .matriz table { width: auto; min-width: 320px; }
@@ -703,7 +711,7 @@
         'Acá ves la corrida (quién necesita qué) y armás el pedido, todo en una pantalla.',
         ['Arriba elegís el horizonte: <b>Ahora</b> (lo que corresponde hoy) o <b>+' + esc(dias) + ' días</b> (previsión, solo para mirar; ahí no se compra ni se congela).',
          'En <b>“Quiénes y qué”</b> está la lista operario + prenda con su estado. Lo rojo es crítico.',
-         'Tildá <b>“No comprar”</b> en lo que no quieras incluir en esta compra.',
+         'Tildá <b>“No comprar”</b> en lo que no quieras incluir en esta compra. Al tildarla aparece una casilla para anotar <b>por qué no se compra</b> (se guarda solo; queda como registro y se ve también en Personal → Entregas).',
          'Lo que dice <b>“falta”</b> en talle no se puede pedir hasta cargarlo en Personal.',
          'Abajo se arma el <b>Pedido</b>: las matrices de cantidades por talle y grupo, y la <b>comparación de proveedores</b> (marca el ganador).',
          'El botón verde <b>“Congelar esta compra”</b> la guarda en el Historial y arma la lista de entrega. ' +
@@ -1112,7 +1120,7 @@
     cont.innerHTML = list.length
       ? tablaFilas(list, comprarEditable)
       : vacio(comprarFilas.length ? 'Nada coincide con el filtro.' : 'No hay prendas en este horizonte.');
-    if (comprarEditable) wireFilas();
+    if (comprarEditable) { wireFilas(); wireMotivosNoCompra(); }
   }
 
   function tablaFilas(filas, editable) {
@@ -1124,6 +1132,12 @@
         ? '<td class="center"><input type="checkbox" class="exc" data-clave="' + esc(clave) + '" ' +
             (excl ? 'checked' : '') + (f.faltaTalle ? ' disabled' : '') + '></td>'
         : '';
+      var motCell = editable
+        ? '<td class="mnc-cell">' +
+            '<input type="text" class="mnc-input" data-clave="' + esc(clave) + '" data-legajo="' + esc(f.legajo) + '" data-prenda="' + esc(f.prenda) + '" value="' + esc(f.motivoNoCompra || '') + '" placeholder="por qué no se compra">' +
+            '<span class="mnc-saved">' + esc(f.motivoNoCompra || '') + '</span>' +
+          '</td>'
+        : '';
       return '<tr class="' + (f.estado === 'CRITICO' ? 'row-critico ' : '') + (excl && editable ? 'excluida' : '') + '">' +
         '<td>' + esc(f.legajo) + '</td>' +
         '<td>' + esc(f.nombre) + '</td>' +
@@ -1133,11 +1147,11 @@
         '<td>' + (f.faltaTalle ? '<span class="badge sindato">falta</span>' : esc(f.talle)) + '</td>' +
         '<td class="num">' + (f.mesesUso === null ? '—' : f.mesesUso) + '</td>' +
         '<td>' + esc(f.ultimaEntrega || '—') + '</td>' +
-        '<td>' + badgeEstado(f.estado, f.innegociable) + '</td>' + accCell +
+        '<td>' + badgeEstado(f.estado, f.innegociable) + '</td>' + accCell + motCell +
       '</tr>';
     }).join('');
     var headers = ['Legajo', 'Nombre', 'Centro', 'Prenda', 'Grupo', 'Talle', 'Meses', 'Últ. entrega', 'Estado'];
-    if (editable) headers.push('No comprar');
+    if (editable) headers.push('No comprar', 'Motivo (no compra)');
     return tabla(headers, rows);
   }
 
@@ -1147,8 +1161,34 @@
         var k = chk.getAttribute('data-clave');
         if (chk.checked) S.exclusiones[k] = true; else delete S.exclusiones[k];
         var tr = chk.closest('tr'); if (tr) tr.classList.toggle('excluida', chk.checked);
+        if (chk.checked) { var mi = tr && tr.querySelector('.mnc-input'); if (mi) setTimeout(function () { mi.focus(); }, 0); }
         programarRefrescoPedido();
       });
+    });
+  }
+
+  /** Guarda el motivo de "no compra" al salir del campo, solo si cambió. */
+  function wireMotivosNoCompra() {
+    Array.prototype.forEach.call($('comprarBody').querySelectorAll('.mnc-input'), function (inp) {
+      var sucio = false;
+      function guardar() {
+        if (!sucio) return;
+        sucio = false;
+        var clave = inp.getAttribute('data-clave');
+        var comentario = inp.value.trim();
+        var fila = comprarFilas.filter(function (x) {
+          return (String(x.legajo).toUpperCase().replace(/\s+/g, '') + '|' + x.prenda) === clave;
+        })[0];
+        if (fila) fila.motivoNoCompra = comentario;
+        var span = inp.parentNode.querySelector('.mnc-saved');
+        if (span) span.textContent = comentario;
+        api('registrarNoCompra', { datos: {
+          legajo: inp.getAttribute('data-legajo'), prenda: inp.getAttribute('data-prenda'), comentario: comentario
+        } }).then(function () { toast('Motivo guardado.', 'ok'); }).catch(manejar);
+      }
+      inp.addEventListener('input', function () { sucio = true; });
+      inp.addEventListener('blur', guardar);
+      inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); } });
     });
   }
 
@@ -1672,8 +1712,17 @@
         notas = '<h3 class="sub-tit" style="margin-top:18px">Motivos de no-entrega</h3>' +
           tabla(['Fecha', 'Prendas', 'Motivo'], nrows);
       }
+      var notasC = '';
+      if (h.notasNoCompra && h.notasNoCompra.length) {
+        var crows = h.notasNoCompra.map(function (n) {
+          return '<tr><td>' + esc(n.fecha) + '</td><td>' + esc(n.prenda || '') + '</td>' +
+            '<td class="muted">' + esc(n.comentario || '') + '</td></tr>';
+        }).join('');
+        notasC = '<h3 class="sub-tit" style="margin-top:18px">Motivos de no-compra</h3>' +
+          tabla(['Fecha', 'Prenda', 'Motivo'], crows);
+      }
       $('modalTitulo').textContent = 'Entregas de ' + (h.nombre || '') + ' · legajo ' + (h.legajo || legajo);
-      $('modalCuerpo').innerHTML = resumen + cuerpo + notas;
+      $('modalCuerpo').innerHTML = resumen + cuerpo + notas + notasC;
     }).catch(function (e) { $('modalCuerpo').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
   }
 

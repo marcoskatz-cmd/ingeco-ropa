@@ -67,6 +67,7 @@ function enrutar_(metodo, p, sesion) {
     case 'calcularCorrida': return calcularCorrida_();
     case 'generarPrevision': return generarPrevision_();
     case 'armarPedido': return armarPedido_(p.exclusiones || [], p.horizonte);
+    case 'registrarNoCompra': return registrarNoCompra_(p.datos || p, usuario);
 
     // --- Cruce RRHH ---
     case 'cruzarRRHH': return cruzarRRHH_(p.texto || '');

@@ -51,6 +51,20 @@ El padrón de ~100 operarios con su última fecha de entrega se importa con moti
 
 Alternativa sin hoja: pasar el array 2D (encabezados + filas) directo a `importarPadronDesdeValores(valores)`.
 
+## Actualizar el código ya desplegado (clasp)
+
+Una vez configurado clasp (login con la cuenta dueña + `.clasp.json` con el `scriptId`), cada cambio se sube y publica sin copiar y pegar:
+
+```bash
+clasp push --force          # sube todos los .gs + index.html al editor
+clasp redeploy AKfycbwWPz0KiSGEmgJDGYgaBsWGJaYuIQl0dG2OfpC9yCiF6qB3xpzaUtRboDB0d7hOi3nZJw -d "qué cambió"
+```
+
+- El `deploymentId` de arriba es la **web app en vivo** (la misma URL `/exec`). `clasp redeploy` le crea una versión nueva y la apunta, sin cambiar la URL.
+- `.claspignore` deja afuera `build_bundles.js`, `docs/`, los `.txt` y `.md`: solo se suben los `.gs`, `index.html` y `appsscript.json`.
+- Con clasp ya **no hace falta** el bundle `CODIGO_COMPLETO.txt` ni copiar y pegar en el editor.
+- `inicializarSistema()` solo se corre si cambió el esquema de hojas (las hojas nuevas tipo `NO_ENTREGAS` / `NO_COMPRAS` se crean solas al primer uso).
+
 ## Notas
 
 - **Cambiar de PC:** clonás el repo, `clasp login` con la misma cuenta personal, `clasp push`. El `SHEET_ID` vive en Script Properties del proyecto, no en el repo.

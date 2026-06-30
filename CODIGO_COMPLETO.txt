@@ -33,6 +33,7 @@ var SHEETS = {
   PERSONAL: 'PERSONAL',
   ENTREGAS: 'ENTREGAS',
   NO_ENTREGAS: 'NO_ENTREGAS',
+  NO_COMPRAS: 'NO_COMPRAS',
   PROVEEDORES: 'PROVEEDORES',
   HISTORIAL: 'HISTORIAL_COMPRAS'
 };
@@ -398,6 +399,8 @@ var COLS = {
   NO_ENTREGAS: ['FECHA', 'LEGAJO', 'APELLIDO Y NOMBRE', 'PRENDAS',
                 'COMENTARIO', 'USUARIO'],
 
+  NO_COMPRAS: ['FECHA', 'LEGAJO', 'PRENDA', 'COMENTARIO', 'USUARIO'],
+
   PROVEEDORES: ['PRENDA', 'PROVEEDOR 1', 'PROVEEDOR 2', 'PROVEEDOR 3',
                 'PROVEEDOR 4', 'PROVEEDOR 5'],
 
@@ -471,6 +474,7 @@ function inicializarSistema() {
   ensureHoja_(ss, SHEETS.PERSONAL, COLS.PERSONAL);
   ensureHoja_(ss, SHEETS.ENTREGAS, COLS.ENTREGAS);
   ensureHoja_(ss, SHEETS.NO_ENTREGAS, COLS.NO_ENTREGAS);
+  ensureHoja_(ss, SHEETS.NO_COMPRAS, COLS.NO_COMPRAS);
   ensureHoja_(ss, SHEETS.PROVEEDORES, COLS.PROVEEDORES);
   ensureHoja_(ss, SHEETS.HISTORIAL, COLS.HISTORIAL);
 
@@ -1153,6 +1157,19 @@ function historialOperario_(legajo) {
     notas = notas.map(function (n) { return { fecha: n.fecha, prendas: n.prendas, comentario: n.comentario }; });
   }
 
+  var notasCompra = [];
+  if (getSheet_(SHEETS.NO_COMPRAS)) {
+    leerObjetos_(SHEETS.NO_COMPRAS).filas
+      .filter(function (f) { return claveLegajo_(f.LEGAJO) === clave; })
+      .forEach(function (f) {
+        var fe = aFecha_(f.FECHA);
+        notasCompra.push({ _t: fe ? fe.getTime() : 0, fecha: fe ? fmtFecha_(fe) : String(f.FECHA || ''),
+          prenda: f.PRENDA || '', comentario: f.COMENTARIO || '' });
+      });
+    notasCompra.sort(function (a, b) { return b._t - a._t; });
+    notasCompra = notasCompra.map(function (n) { return { fecha: n.fecha, prenda: n.prenda, comentario: n.comentario }; });
+  }
+
   return {
     legajo: op ? op[P.LEGAJO] : legajo,
     nombre: op ? op[P.NOMBRE] : (propias[0] ? propias[0][E.NOMBRE] : ''),
@@ -1162,7 +1179,8 @@ function historialOperario_(legajo) {
       BOTIN: ultima.BOTIN ? fmtFecha_(ultima.BOTIN) : null
     },
     entregas: entregas,
-    notasNoEntrega: notas
+    notasNoEntrega: notas,
+    notasNoCompra: notasCompra
   };
 }
 
@@ -1388,6 +1406,14 @@ function armarPedido_(exclusiones, horizonte) {
 function vistaComprar_(horizonte, exclusiones) {
   var esPrev = (horizonte === 'prevision');
   var vista = esPrev ? generarPrevision_() : calcularCorrida_();
+
+  // Adjunta a cada fila el motivo guardado de "no compra" (si lo hay).
+  var notas = notasNoCompraPorClave_();
+  vista.filas.forEach(function (f) {
+    var n = notas[claveLegajo_(f.legajo) + '|' + String(f.prenda).toUpperCase()];
+    f.motivoNoCompra = n ? n.comentario : '';
+  });
+
   return {
     horizonte: esPrev ? 'prevision' : 'ahora',
     titulo: vista.titulo,
@@ -1398,6 +1424,56 @@ function vistaComprar_(horizonte, exclusiones) {
     resumen: vista.resumen,
     pedido: armarDesdeFilas_(vista.filas, exclusiones)
   };
+}
+
+/* ===================== No-compras (motivos) ===================== */
+
+/** Crea la hoja NO_COMPRAS con encabezados si todavía no existe. */
+function ensureNoComprasSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName(SHEETS.NO_COMPRAS);
+  if (!sh) {
+    sh = ss.insertSheet(SHEETS.NO_COMPRAS);
+    sh.getRange(1, 1, 1, COLS.NO_COMPRAS.length).setValues([COLS.NO_COMPRAS]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** Registra el motivo de por qué una prenda NO se compra. Append-only. */
+function registrarNoCompra_(datos, usuario) {
+  datos = datos || {};
+  var legajo = String(datos.legajo || '').trim();
+  var prenda = String(datos.prenda || '').toUpperCase();
+  if (!legajo) throw new Error('Falta el legajo.');
+  if (PRENDAS.indexOf(prenda) < 0) throw new Error('Prenda inválida: ' + datos.prenda);
+  ensureNoComprasSheet_();
+  appendFilaPorHeader_(SHEETS.NO_COMPRAS, {
+    'FECHA': hoy_(),
+    'LEGAJO': legajo,
+    'PRENDA': prenda,
+    'COMENTARIO': String(datos.comentario || '').trim(),
+    'USUARIO': usuario || ''
+  });
+  return { ok: true };
+}
+
+/** { "claveLegajo|PRENDA": { comentario } } con el motivo MÁS reciente. */
+function notasNoCompraPorClave_() {
+  var sh = getSheet_(SHEETS.NO_COMPRAS);
+  if (!sh) return {};
+  var data = leerObjetos_(SHEETS.NO_COMPRAS);
+  var mapa = {};
+  data.filas.forEach(function (f) {
+    var leg = claveLegajo_(f.LEGAJO);
+    var prenda = String(f.PRENDA || '').toUpperCase();
+    if (!leg || PRENDAS.indexOf(prenda) < 0) return;
+    var fe = aFecha_(f.FECHA);
+    var clave = leg + '|' + prenda;
+    var nota = { _t: fe ? fe.getTime() : 0, comentario: f.COMENTARIO || '' };
+    if (!mapa[clave] || nota._t >= mapa[clave]._t) mapa[clave] = nota;
+  });
+  return mapa;
 }
 
 /**
@@ -2086,6 +2162,7 @@ function enrutar_(metodo, p, sesion) {
     case 'calcularCorrida': return calcularCorrida_();
     case 'generarPrevision': return generarPrevision_();
     case 'armarPedido': return armarPedido_(p.exclusiones || [], p.horizonte);
+    case 'registrarNoCompra': return registrarNoCompra_(p.datos || p, usuario);
 
     // --- Cruce RRHH ---
     case 'cruzarRRHH': return cruzarRRHH_(p.texto || '');

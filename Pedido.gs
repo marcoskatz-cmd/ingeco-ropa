@@ -27,6 +27,14 @@ function armarPedido_(exclusiones, horizonte) {
 function vistaComprar_(horizonte, exclusiones) {
   var esPrev = (horizonte === 'prevision');
   var vista = esPrev ? generarPrevision_() : calcularCorrida_();
+
+  // Adjunta a cada fila el motivo guardado de "no compra" (si lo hay).
+  var notas = notasNoCompraPorClave_();
+  vista.filas.forEach(function (f) {
+    var n = notas[claveLegajo_(f.legajo) + '|' + String(f.prenda).toUpperCase()];
+    f.motivoNoCompra = n ? n.comentario : '';
+  });
+
   return {
     horizonte: esPrev ? 'prevision' : 'ahora',
     titulo: vista.titulo,
@@ -37,6 +45,56 @@ function vistaComprar_(horizonte, exclusiones) {
     resumen: vista.resumen,
     pedido: armarDesdeFilas_(vista.filas, exclusiones)
   };
+}
+
+/* ===================== No-compras (motivos) ===================== */
+
+/** Crea la hoja NO_COMPRAS con encabezados si todavía no existe. */
+function ensureNoComprasSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName(SHEETS.NO_COMPRAS);
+  if (!sh) {
+    sh = ss.insertSheet(SHEETS.NO_COMPRAS);
+    sh.getRange(1, 1, 1, COLS.NO_COMPRAS.length).setValues([COLS.NO_COMPRAS]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/** Registra el motivo de por qué una prenda NO se compra. Append-only. */
+function registrarNoCompra_(datos, usuario) {
+  datos = datos || {};
+  var legajo = String(datos.legajo || '').trim();
+  var prenda = String(datos.prenda || '').toUpperCase();
+  if (!legajo) throw new Error('Falta el legajo.');
+  if (PRENDAS.indexOf(prenda) < 0) throw new Error('Prenda inválida: ' + datos.prenda);
+  ensureNoComprasSheet_();
+  appendFilaPorHeader_(SHEETS.NO_COMPRAS, {
+    'FECHA': hoy_(),
+    'LEGAJO': legajo,
+    'PRENDA': prenda,
+    'COMENTARIO': String(datos.comentario || '').trim(),
+    'USUARIO': usuario || ''
+  });
+  return { ok: true };
+}
+
+/** { "claveLegajo|PRENDA": { comentario } } con el motivo MÁS reciente. */
+function notasNoCompraPorClave_() {
+  var sh = getSheet_(SHEETS.NO_COMPRAS);
+  if (!sh) return {};
+  var data = leerObjetos_(SHEETS.NO_COMPRAS);
+  var mapa = {};
+  data.filas.forEach(function (f) {
+    var leg = claveLegajo_(f.LEGAJO);
+    var prenda = String(f.PRENDA || '').toUpperCase();
+    if (!leg || PRENDAS.indexOf(prenda) < 0) return;
+    var fe = aFecha_(f.FECHA);
+    var clave = leg + '|' + prenda;
+    var nota = { _t: fe ? fe.getTime() : 0, comentario: f.COMENTARIO || '' };
+    if (!mapa[clave] || nota._t >= mapa[clave]._t) mapa[clave] = nota;
+  });
+  return mapa;
 }
 
 /**

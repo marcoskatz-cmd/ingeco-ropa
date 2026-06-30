@@ -20,6 +20,7 @@ function inicializarSistema() {
   ensureHoja_(ss, SHEETS.PERSONAL, COLS.PERSONAL);
   ensureHoja_(ss, SHEETS.ENTREGAS, COLS.ENTREGAS);
   ensureHoja_(ss, SHEETS.NO_ENTREGAS, COLS.NO_ENTREGAS);
+  ensureHoja_(ss, SHEETS.NO_COMPRAS, COLS.NO_COMPRAS);
   ensureHoja_(ss, SHEETS.PROVEEDORES, COLS.PROVEEDORES);
   ensureHoja_(ss, SHEETS.HISTORIAL, COLS.HISTORIAL);
 

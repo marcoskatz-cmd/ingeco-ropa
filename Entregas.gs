@@ -278,6 +278,19 @@ function historialOperario_(legajo) {
     notas = notas.map(function (n) { return { fecha: n.fecha, prendas: n.prendas, comentario: n.comentario }; });
   }
 
+  var notasCompra = [];
+  if (getSheet_(SHEETS.NO_COMPRAS)) {
+    leerObjetos_(SHEETS.NO_COMPRAS).filas
+      .filter(function (f) { return claveLegajo_(f.LEGAJO) === clave; })
+      .forEach(function (f) {
+        var fe = aFecha_(f.FECHA);
+        notasCompra.push({ _t: fe ? fe.getTime() : 0, fecha: fe ? fmtFecha_(fe) : String(f.FECHA || ''),
+          prenda: f.PRENDA || '', comentario: f.COMENTARIO || '' });
+      });
+    notasCompra.sort(function (a, b) { return b._t - a._t; });
+    notasCompra = notasCompra.map(function (n) { return { fecha: n.fecha, prenda: n.prenda, comentario: n.comentario }; });
+  }
+
   return {
     legajo: op ? op[P.LEGAJO] : legajo,
     nombre: op ? op[P.NOMBRE] : (propias[0] ? propias[0][E.NOMBRE] : ''),
@@ -287,6 +300,7 @@ function historialOperario_(legajo) {
       BOTIN: ultima.BOTIN ? fmtFecha_(ultima.BOTIN) : null
     },
     entregas: entregas,
-    notasNoEntrega: notas
+    notasNoEntrega: notas,
+    notasNoCompra: notasCompra
   };
 }

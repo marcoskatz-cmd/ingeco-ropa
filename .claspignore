@@ -1,0 +1,10 @@
+# Solo se suben los .gs, index.html y appsscript.json. Todo lo demás se ignora.
+.git/**
+node_modules/**
+docs/**
+build_bundles.js
+*.txt
+*.md
+.clasp.json
+.claspignore
+.gitignore
