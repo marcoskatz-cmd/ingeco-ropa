@@ -275,9 +275,10 @@
   .persona-card.tiene-critico { border-color: var(--rojo); }
   .prenda-row { padding: 7px 0; border-top: 1px solid #eef0f5; }
   .persona-head + .prenda-row { border-top: none; }
-  .prenda-main { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .prenda-main input[type="checkbox"] { flex: none; }
-  .prenda-info { font-size: 13px; }
+  .prenda-main { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+  .prenda-main > input[type="checkbox"] { flex: 0 0 auto; margin-top: 3px; }
+  .prenda-info { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+  .prenda-info .badge { margin-top: 2px; }
   .prenda-row.excluida .prenda-info { opacity: .5; text-decoration: line-through; }
 
   /* ---------- Matriz de pedido ---------- */
