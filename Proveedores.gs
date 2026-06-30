@@ -97,3 +97,70 @@ function leerPreciosProveedores_() {
   }
   return { proveedores: proveedores };
 }
+
+/* ------------------- Lectura / escritura para la UI ------------------- */
+
+/**
+ * Forma plana para el front: { prendas, proveedores: [{ nombre, precios }] }.
+ * precios es { PANTALON, CAMISA, BOTIN } con número o null por prenda.
+ */
+function listarProveedores_() {
+  var lectura = leerPreciosProveedores_();
+  return {
+    prendas: PRENDAS,
+    proveedores: lectura.proveedores.map(function (p) {
+      return { nombre: p.nombre, precios: p.precios };
+    })
+  };
+}
+
+/**
+ * Reescribe la matriz PROVEEDORES desde la UI. datos = { proveedores: [{ nombre,
+ * precios: { PANTALON, CAMISA, BOTIN } }] }. Hasta 5 proveedores, sin nombres
+ * repetidos. Cada precio: número > 0 o vacío (no cotiza). Valida TODO antes de
+ * tocar la hoja: si algo está mal, no deja la matriz a medias.
+ */
+function guardarProveedores_(datos) {
+  datos = datos || {};
+  var entrada = (datos.proveedores || []).filter(function (p) {
+    return p && String(p.nombre || '').trim();
+  });
+  if (entrada.length > 5) throw new Error('Como máximo 5 proveedores.');
+
+  var nombres = entrada.map(function (p) { return String(p.nombre).trim(); });
+  for (var i = 0; i < nombres.length; i++) {
+    for (var j = i + 1; j < nombres.length; j++) {
+      if (normalizar_(nombres[i]) === normalizar_(nombres[j])) {
+        throw new Error('Dos proveedores con el mismo nombre: ' + nombres[i]);
+      }
+    }
+  }
+
+  function precioVal(v, prov, prenda) {
+    if (v === '' || v === null || v === undefined) return '';
+    var n = Number(v);
+    if (!isFinite(n) || n <= 0) {
+      throw new Error('Precio inválido en ' + prov + ' / ' + prenda + ': "' + v + '". Número > 0 o vacío.');
+    }
+    return n;
+  }
+
+  var filas = PRENDAS.map(function (prenda) {
+    var fila = [prenda];
+    entrada.forEach(function (p) {
+      fila.push(precioVal((p.precios || {})[prenda], String(p.nombre).trim(), prenda));
+    });
+    return fila;
+  });
+
+  var sh = requireSheet_(SHEETS.PROVEEDORES);
+  var maxCols = Math.max(sh.getMaxColumns(), 6);
+  var maxRows = Math.max(sh.getMaxRows(), 4);
+  sh.getRange(1, 2, 1, maxCols - 1).clearContent();
+  sh.getRange(2, 1, maxRows - 1, maxCols).clearContent();
+  sh.getRange(1, 1).setValue('PRENDA');
+  if (nombres.length) sh.getRange(1, 2, 1, nombres.length).setValues([nombres]);
+  sh.getRange(2, 1, filas.length, 1 + entrada.length).setValues(filas);
+  invalidarCache_();
+  return { ok: true, proveedores: nombres.length };
+}

@@ -10,7 +10,7 @@
  */
 
 // Métodos que NO requieren token (pantalla de login).
-var METODOS_PUBLICOS = { login: true, listarNombresLogin: true };
+var METODOS_PUBLICOS = { loginPin: true };
 
 function apiCall(metodo, payloadJson) {
   try {
@@ -30,17 +30,24 @@ function enrutar_(metodo, p, sesion) {
   var usuario = sesion ? sesion.nombre : '';
   switch (metodo) {
     // --- Pre-login ---
-    case 'login': return loginConPin_(p.nombre, p.pin);
-    case 'listarNombresLogin': return listarNombresLogin_();
+    case 'loginPin': return loginPin_(p.pin);
 
-    // --- Sesión / usuarios ---
+    // --- Sesión / PIN ---
     case 'sesion': return { nombre: usuario };
-    case 'cambiarPin': return cambiarPin_(usuario, p.pinNuevo);
-    case 'crearUsuario': return crearUsuario_(p.nombre, p.pin);
+    case 'cambiarPinAcceso': return cambiarPinAcceso_(p.pinNuevo);
+
+    // --- Tablero (inicio) ---
+    case 'resumenTablero': return resumenTablero_();
 
     // --- Config / listas (para poblar selects y rótulos del front) ---
     case 'getConfig': return configParaUI_();
     case 'getListas': return getListas_();
+
+    // --- Escritura de configuración (Ajustes) ---
+    case 'guardarParametros': return guardarParametros_(p.datos || p);
+    case 'guardarListas': return guardarListas_(p.datos || p);
+    case 'listarProveedores': return listarProveedores_();
+    case 'guardarProveedores': return guardarProveedores_(p.datos || p);
 
     // --- Padrón (PERSONAL) ---
     case 'listarPersonal': return listarPersonal_(p.soloActivos !== false);
@@ -51,13 +58,14 @@ function enrutar_(metodo, p, sesion) {
 
     // --- Entregas ---
     case 'registrarEntrega': return registrarEntrega_(p.datos || p);
+    case 'entregasPendientes': return entregasPendientes_();
+    case 'confirmarEntregas': return confirmarEntregas_(p.datos || p);
 
-    // --- Corrida / previsión ---
+    // --- Comprar (corrida + previsión + pedido, unificado) ---
+    case 'vistaComprar': return vistaComprar_(p.horizonte, p.exclusiones || []);
     case 'calcularCorrida': return calcularCorrida_();
     case 'generarPrevision': return generarPrevision_();
-
-    // --- Pedido / proveedores ---
-    case 'armarPedido': return armarPedido_(p.exclusiones || []);
+    case 'armarPedido': return armarPedido_(p.exclusiones || [], p.horizonte);
 
     // --- Cruce RRHH ---
     case 'cruzarRRHH': return cruzarRRHH_(p.texto || '');

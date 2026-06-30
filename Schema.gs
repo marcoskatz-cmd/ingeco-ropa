@@ -11,8 +11,6 @@ var COLS = {
   LISTAS: ['COLOR ROPA', 'TIPO BOTIN', 'CATEGORIA', 'CENTRO DE COSTO',
            'TALLE PANT', 'TALLE CAM', 'TALLE BOTIN'],
 
-  USUARIOS: ['NOMBRE', 'PIN_HASH', 'ACTIVO'],
-
   PERSONAL: ['LEGAJO', 'APELLIDO Y NOMBRE', 'CATEGORÍA', 'CENTRO DE COSTO',
              'COLOR ROPA', 'TIPO BOTÍN', 'TALLE PANT', 'TALLE CAM',
              'TALLE BOTÍN', 'ACTIVO', 'OBSERVACIONES'],
@@ -48,8 +46,6 @@ var E = {
   FECHA: 'FECHA', LEGAJO: 'LEGAJO', NOMBRE: 'APELLIDO Y NOMBRE',
   PRENDA: 'PRENDA', TALLE: 'TALLE', MOTIVO: 'MOTIVO', OBS: 'OBSERVACIONES'
 };
-
-var U = { NOMBRE: 'NOMBRE', PIN: 'PIN_HASH', ACTIVO: 'ACTIVO' };
 
 /** Columna de PERSONAL con el talle de cada prenda. */
 function talleHeaderDePrenda_(prenda) {

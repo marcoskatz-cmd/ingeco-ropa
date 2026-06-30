@@ -1,15 +1,15 @@
 /**
- * Auth.gs — Login por PIN y sesión por token firmado. Independiente del nivel
- * de acceso de Google del Web App: aunque el deploy sea anónimo, sin PIN válido
- * no se hace nada.
+ * Auth.gs — Acceso por un único PIN y sesión por token firmado. Aunque el
+ * Web App se publique anónimo, sin el PIN correcto no se hace nada.
  *
- * USUARIOS: NOMBRE | PIN_HASH (formato salt$hash) | ACTIVO. El token identifica
- * al usuario para la trazabilidad (quién registró/congeló cada cosa).
+ * El PIN se guarda como hash (salt$hash) en CONFIG (pin_acceso_hash). El token
+ * lleva una identidad fija "Compras" para la trazabilidad (quién congeló/registró).
  */
 
 var TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
 var HASH_ITER = 10000;
 var PROP_SECRET = 'TOKEN_SECRET';
+var IDENTIDAD_FIJA = 'Compras'; // única identidad en tokens e Historial
 
 /* ----------------------------- Hash de PIN ----------------------------- */
 
@@ -81,58 +81,23 @@ function validarToken_(token) {
 
 /* ----------------------------- Login ----------------------------- */
 
-/** Valida nombre + PIN contra USUARIOS y devuelve un token. */
-function loginConPin_(nombre, pin) {
-  var objetivo = normalizar_(nombre);
-  var data = leerObjetos_(SHEETS.USUARIOS);
-  for (var i = 0; i < data.filas.length; i++) {
-    var f = data.filas[i];
-    if (normalizar_(f[U.NOMBRE]) === objetivo && esSi_(f[U.ACTIVO])) {
-      if (verifyPin_(pin, f[U.PIN])) {
-        return { ok: true, token: emitirToken_(f[U.NOMBRE]), nombre: f[U.NOMBRE] };
-      }
-      break;
-    }
+/** Valida el PIN de acceso contra CONFIG y devuelve un token (identidad "Compras"). */
+function loginPin_(pin) {
+  var hash = getPinHash_();
+  if (!hash) {
+    throw new Error('El sistema no tiene PIN configurado. Ejecutá inicializarSistema().');
   }
-  throw new Error('Nombre o PIN incorrecto.');
+  if (!verifyPin_(pin, hash)) {
+    throw new Error('PIN incorrecto.');
+  }
+  return { ok: true, token: emitirToken_(IDENTIDAD_FIJA), nombre: IDENTIDAD_FIJA };
 }
 
-/** Lista de nombres activos para poblar el selector de login. */
-function listarNombresLogin_() {
-  var data = leerObjetos_(SHEETS.USUARIOS);
-  return data.filas
-    .filter(function (f) { return esSi_(f[U.ACTIVO]); })
-    .map(function (f) { return f[U.NOMBRE]; });
-}
-
-/* ------------------------- Gestión de usuarios ------------------------- */
-
-function crearUsuario_(nombre, pin) {
-  if (!nombre || !/^\d{4}$/.test(String(pin))) {
-    throw new Error('Nombre y PIN de 4 dígitos son obligatorios.');
+/** Cambia el PIN de acceso. Sólo accesible desde una sesión válida. */
+function cambiarPinAcceso_(pinNuevo) {
+  if (!/^\d{4}$/.test(String(pinNuevo))) {
+    throw new Error('El PIN debe tener 4 dígitos.');
   }
-  var existentes = leerObjetos_(SHEETS.USUARIOS);
-  var objetivo = normalizar_(nombre);
-  for (var i = 0; i < existentes.filas.length; i++) {
-    if (normalizar_(existentes.filas[i][U.NOMBRE]) === objetivo) {
-      throw new Error('Ya existe un usuario con ese nombre.');
-    }
-  }
-  appendFilaPorHeader_(SHEETS.USUARIOS, {
-    'NOMBRE': nombre, 'PIN_HASH': hashPin_(pin), 'ACTIVO': 'SÍ'
-  });
+  escribirConfig_(PARAM.PIN_HASH, hashPin_(pinNuevo));
   return { ok: true };
-}
-
-function cambiarPin_(nombre, pinNuevo) {
-  if (!/^\d{4}$/.test(String(pinNuevo))) throw new Error('El PIN debe tener 4 dígitos.');
-  var data = leerObjetos_(SHEETS.USUARIOS);
-  var colPin = colPorHeader_(data.headers, U.PIN);
-  for (var i = 0; i < data.filas.length; i++) {
-    if (normalizar_(data.filas[i][U.NOMBRE]) === normalizar_(nombre)) {
-      data.hoja.getRange(data.indiceFila[i], colPin).setValue(hashPin_(pinNuevo));
-      return { ok: true };
-    }
-  }
-  throw new Error('Usuario no encontrado.');
 }

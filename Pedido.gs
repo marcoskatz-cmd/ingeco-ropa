@@ -7,13 +7,49 @@
  * exclusiones: lista de claves "LEGAJO|PRENDA" a dejar afuera (lo que el
  * usuario marcó como no entregado en la pantalla de la corrida).
  */
-function armarPedido_(exclusiones) {
-  var corrida = calcularCorrida_();
+function armarPedido_(exclusiones, horizonte) {
+  var esPrev = (horizonte === 'prevision');
+  var vista = esPrev ? generarPrevision_() : calcularCorrida_();
+  var ped = armarDesdeFilas_(vista.filas, exclusiones);
+  ped.horizonte = esPrev ? 'prevision' : 'ahora';
+  ped.fechaCorrida = vista.fechaCorrida || vista.fechaObjetivo;
+  ped.fechaObjetivo = vista.fechaObjetivo;
+  ped.dias = vista.dias || 0;
+  return ped;
+}
+
+/**
+ * Vista unificada de la pantalla "Comprar": en UNA pasada calcula la lista del
+ * horizonte elegido (corrida actual o previsión) y arma el pedido (matrices +
+ * proveedores) sobre esas mismas filas, así evaluarPadron_ corre una sola vez.
+ *  horizonte: 'ahora' (default) | 'prevision'.
+ */
+function vistaComprar_(horizonte, exclusiones) {
+  var esPrev = (horizonte === 'prevision');
+  var vista = esPrev ? generarPrevision_() : calcularCorrida_();
+  return {
+    horizonte: esPrev ? 'prevision' : 'ahora',
+    titulo: vista.titulo,
+    fechaCorrida: vista.fechaCorrida || vista.fechaObjetivo,
+    fechaObjetivo: vista.fechaObjetivo,
+    dias: vista.dias || getDiasPrevision_(),
+    filas: vista.filas,
+    resumen: vista.resumen,
+    pedido: armarDesdeFilas_(vista.filas, exclusiones)
+  };
+}
+
+/**
+ * Núcleo del armado: a partir de filas ya evaluadas separa incluidas /
+ * excluidas / sin talle y construye matrices y valorización. No recalcula el
+ * padrón: trabaja sobre las filas que recibe.
+ */
+function armarDesdeFilas_(filas, exclusiones) {
   var excl = {};
   (exclusiones || []).forEach(function (k) { excl[String(k).toUpperCase()] = true; });
 
   var incluidas = [], excluidas = [], sinTalle = [];
-  corrida.filas.forEach(function (f) {
+  (filas || []).forEach(function (f) {
     var clave = claveLegajo_(f.legajo) + '|' + f.prenda;
     if (excl[clave]) { excluidas.push(f); return; }
     if (f.faltaTalle) { sinTalle.push(f); return; }
@@ -30,7 +66,6 @@ function armarPedido_(exclusiones) {
   });
 
   return {
-    fechaCorrida: corrida.fechaCorrida,
     matrices: matrices,
     totales: totales,
     incluidas: incluidas,

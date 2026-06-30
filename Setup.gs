@@ -17,7 +17,6 @@ function inicializarSistema() {
 
   ensureHoja_(ss, SHEETS.CONFIG, COLS.CONFIG);
   ensureHoja_(ss, SHEETS.LISTAS, COLS.LISTAS);
-  ensureHoja_(ss, SHEETS.USUARIOS, COLS.USUARIOS);
   ensureHoja_(ss, SHEETS.PERSONAL, COLS.PERSONAL);
   ensureHoja_(ss, SHEETS.ENTREGAS, COLS.ENTREGAS);
   ensureHoja_(ss, SHEETS.PROVEEDORES, COLS.PROVEEDORES);
@@ -28,7 +27,7 @@ function inicializarSistema() {
   sembrarConfig_(ss);
   sembrarListas_(ss);
   sembrarProveedores_(ss);
-  sembrarUsuarioAdmin_(ss);
+  sembrarPinAcceso_(ss);
 
   aplicarValidaciones_(ss);
   aplicarFormatosFecha_(ss);
@@ -131,10 +130,19 @@ function sembrarProveedores_(ss) {
     .setValues(PRENDAS.map(function (p) { return [p]; }));
 }
 
-function sembrarUsuarioAdmin_(ss) {
-  var sh = ss.getSheetByName(SHEETS.USUARIOS);
-  if (sh.getLastRow() > 1) return;
-  sh.getRange(2, 1, 1, 3).setValues([['Administrador', hashPin_('1234'), 'SÍ']]);
+/**
+ * Siembra el PIN de acceso (hash) en CONFIG si todavía no está. PIN inicial 1234.
+ * Idempotente e independiente de sembrarConfig_: en una DB ya inicializada
+ * (donde sembrarConfig_ corta temprano) igual agrega el PIN si falta.
+ */
+function sembrarPinAcceso_(ss) {
+  var sh = ss.getSheetByName(SHEETS.CONFIG);
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim() === PARAM.PIN_HASH) return; // ya configurado
+  }
+  sh.appendRow([PARAM.PIN_HASH, hashPin_('1234'),
+    'Hash del PIN de acceso (salt$hash). Cambialo desde Ajustes. NO compartir ni borrar.']);
 }
 
 /* --------------------------- Validaciones --------------------------- */

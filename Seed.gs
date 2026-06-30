@@ -127,3 +127,56 @@ function buscarCol_(headersNorm, alias) {
 function celda_(fila, idx) {
   return idx >= 0 && idx < fila.length ? fila[idx] : '';
 }
+
+/* ------------------------------------------------------------------ *
+ * Diagnóstico Fase 2 (escritura de config). Correr a mano desde el
+ * editor: lee los valores actuales y los reescribe IGUAL (round-trip
+ * no destructivo). Sirve para confirmar que guardarParametros_,
+ * guardarListas_ y guardarProveedores_ funcionan contra la planilla
+ * real, antes de que exista la pantalla de Ajustes (Fase 6).
+ * No es parte del flujo de la app.
+ * ------------------------------------------------------------------ */
+function _probarConfigEscritura() {
+  var out = [];
+
+  // 1) Parámetros: leer -> reescribir iguales -> releer.
+  var antesP = {
+    vidaUtil: getVidaUtilMeses_(),
+    cadencia: getCadenciaMeses_(),
+    diasPrevision: getDiasPrevision_(),
+    fechaAncla: getFechaAncla_()
+  };
+  guardarParametros_(antesP);
+  invalidarCache_();
+  out.push('PARAMETROS  vidaUtil=' + getVidaUtilMeses_() +
+           ' cadencia=' + getCadenciaMeses_() +
+           ' techo=' + getTechoMeses_() +
+           ' diasPrevision=' + getDiasPrevision_() +
+           ' fechaAncla=' + fmtFecha_(getFechaAncla_()));
+
+  // 2) Listas: reescribir las columnas conocidas con sus valores actuales.
+  var listas = getListas_();
+  var payloadListas = {};
+  COLS.LISTAS.forEach(function (h) { payloadListas[h] = (listas[h] || []).slice(); });
+  guardarListas_(payloadListas);
+  invalidarCache_();
+  var rel = getListas_();
+  out.push('LISTAS      ' + COLS.LISTAS.map(function (h) {
+    return h + '=' + ((rel[h] || []).length);
+  }).join('  '));
+
+  // 3) Proveedores: leer la matriz y reescribirla igual.
+  var prov = listarProveedores_();
+  guardarProveedores_({ proveedores: prov.proveedores });
+  invalidarCache_();
+  var relProv = listarProveedores_();
+  out.push('PROVEEDORES ' + relProv.proveedores.map(function (p) {
+    return p.nombre + '{' + PRENDAS.map(function (k) {
+      return k.charAt(0) + ':' + (p.precios[k] === null ? '-' : p.precios[k]);
+    }).join(',') + '}';
+  }).join('  '));
+
+  var msg = 'OK round-trip Fase 2\n' + out.join('\n');
+  Logger.log(msg);
+  return msg;
+}

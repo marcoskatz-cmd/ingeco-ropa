@@ -10,7 +10,6 @@
 var SHEETS = {
   CONFIG: 'CONFIG',
   LISTAS: 'LISTAS',
-  USUARIOS: 'USUARIOS',
   PERSONAL: 'PERSONAL',
   ENTREGAS: 'ENTREGAS',
   PROVEEDORES: 'PROVEEDORES',
@@ -29,7 +28,8 @@ var PARAM = {
   CADENCIA: 'cadencia_meses',
   TECHO: 'techo_meses',
   FECHA_ANCLA: 'fecha_ancla_corrida',
-  DIAS_PREVISION: 'dias_prevision'
+  DIAS_PREVISION: 'dias_prevision',
+  PIN_HASH: 'pin_acceso_hash'
 };
 
 // Valores por defecto (los que siembra Setup; editables en CONFIG).
@@ -108,6 +108,31 @@ function getFechaAncla_() {
   return d;
 }
 
+/** Hash del PIN de acceso (formato salt$hash), o '' si todavía no se sembró. */
+function getPinHash_() {
+  var v = getConfigMap_()[PARAM.PIN_HASH];
+  return v ? String(v) : '';
+}
+
+/**
+ * Upsert de un parámetro en CONFIG (columnas PARAMETRO / VALOR). Si la clave
+ * existe reescribe su VALOR; si no, agrega una fila al final. Invalida la cache
+ * de execution para que la próxima lectura vea el valor nuevo.
+ */
+function escribirConfig_(clave, valor) {
+  var sh = requireSheet_(SHEETS.CONFIG);
+  var data = sh.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0] || '').trim() === clave) {
+      sh.getRange(i + 1, 2).setValue(valor);
+      invalidarCache_();
+      return;
+    }
+  }
+  sh.appendRow([clave, valor, '']);
+  invalidarCache_();
+}
+
 /* ----------------------------- LISTAS ----------------------------- */
 
 /**
@@ -134,6 +159,61 @@ function getListas_() {
   }
   _memo.listas = listas;
   return listas;
+}
+
+/* ------------------- Escritura de parámetros / listas ------------------- */
+
+/**
+ * Guarda los parámetros de negocio editables en CONFIG. NO toca el techo
+ * (se recalcula con =B2+B3) ni el PIN (va por cambiarPinAcceso_).
+ * datos = { vidaUtil, cadencia, diasPrevision, fechaAncla }  (fechaAncla 'dd/mm/aaaa' o Date)
+ */
+function guardarParametros_(datos) {
+  datos = datos || {};
+  var vidaUtil = Math.round(Number(datos.vidaUtil));
+  var cadencia = Math.round(Number(datos.cadencia));
+  var diasPrev = Math.round(Number(datos.diasPrevision));
+  var fecha = aFecha_(datos.fechaAncla);
+
+  if (!isFinite(vidaUtil) || vidaUtil < 1) throw new Error('La vida útil debe ser un número de meses ≥ 1.');
+  if (!isFinite(cadencia) || cadencia < 1) throw new Error('La cadencia debe ser un número de meses ≥ 1.');
+  if (cadencia > vidaUtil) throw new Error('La cadencia no puede ser mayor que la vida útil.');
+  if (!isFinite(diasPrev) || diasPrev < 0) throw new Error('Los días de previsión deben ser un número ≥ 0.');
+  if (!fecha) throw new Error('La fecha ancla no es válida. Usá el formato dd/mm/aaaa.');
+
+  escribirConfig_(PARAM.VIDA_UTIL, vidaUtil);
+  escribirConfig_(PARAM.CADENCIA, cadencia);
+  escribirConfig_(PARAM.DIAS_PREVISION, diasPrev);
+  escribirConfig_(PARAM.FECHA_ANCLA, fecha);
+  return { ok: true };
+}
+
+/**
+ * Reescribe columnas de la hoja LISTAS. datos = { 'COLOR ROPA': [...], ... }.
+ * Solo toca las columnas presentes en datos (las ausentes quedan intactas).
+ * Cada columna se limpia y reescribe con valores trim, sin vacíos ni duplicados.
+ */
+function guardarListas_(datos) {
+  datos = datos || {};
+  var sh = requireSheet_(SHEETS.LISTAS);
+  var presentes = COLS.LISTAS.filter(function (h) {
+    return Object.prototype.hasOwnProperty.call(datos, h);
+  });
+  if (!presentes.length) throw new Error('No se recibió ninguna lista para guardar.');
+
+  var maxRows = Math.max(sh.getMaxRows() - 1, 1);
+  COLS.LISTAS.forEach(function (header, idx) {
+    if (!Object.prototype.hasOwnProperty.call(datos, header)) return; // no tocar
+    var vals = (datos[header] || [])
+      .map(function (v) { return String(v == null ? '' : v).trim(); })
+      .filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+    sh.getRange(2, idx + 1, maxRows, 1).clearContent();
+    if (vals.length) {
+      sh.getRange(2, idx + 1, vals.length, 1).setValues(vals.map(function (v) { return [v]; }));
+    }
+  });
+  invalidarCache_();
+  return { ok: true, columnas: presentes.length };
 }
 
 /** Invalida la cache de execution (tras escribir CONFIG/LISTAS). */
