@@ -145,7 +145,7 @@
   .topbar-user .btn-link { color: #cdd6ee; }
 
   /* ---------- Vista ---------- */
-  .vista { max-width: 1100px; margin: 0 auto; padding: 18px 16px 60px; }
+  .vista { max-width: 1280px; margin: 0 auto; padding: 18px 16px 60px; }
   .seccion-tit { font-size: 19px; font-weight: bold; color: var(--cobalto); margin: 0 0 4px; }
   .seccion-sub { color: var(--gris); margin: 0 0 16px; font-size: 13px; }
 
@@ -161,6 +161,16 @@
   .fila-botones { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   @media (max-width: 620px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* Grilla de tarjetas (varias por fila para aprovechar el ancho) */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .cards-grid .card { margin-bottom: 0; }
+  @media (max-width: 520px) { .cards-grid { grid-template-columns: 1fr; } }
 
   /* ---------- Chips de resumen ---------- */
   .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -786,7 +796,7 @@
           '<span class="muted">' + it.prenda + (it.grupo ? ' · ' + esc(it.grupo) : '') + ' · ' + esc(it.estado) + '</span>' +
         '</div>';
       }).join('');
-      return '<div class="card pend-card" data-legajo="' + esc(per.legajo) + '" style="max-width:640px;margin-bottom:12px">' +
+      return '<div class="card pend-card" data-legajo="' + esc(per.legajo) + '">' +
         '<div style="margin-bottom:8px"><b>' + esc(per.nombre || '(sin nombre)') + '</b> · legajo ' + esc(per.legajo) + '</div>' +
         items +
         '<div class="grid2">' +
@@ -796,7 +806,7 @@
         '<button class="btn btn-primary btn-block pConf">Confirmar entrega</button>' +
       '</div>';
     }).join('');
-    $('pendBody').innerHTML = '<div style="max-width:640px">' + enc + '</div>' + cards;
+    $('pendBody').innerHTML = enc + '<div class="cards-grid">' + cards + '</div>';
 
     Array.prototype.forEach.call($('pendBody').querySelectorAll('.pend-card'), function (card) {
       Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
