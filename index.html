@@ -362,7 +362,8 @@
     { id: 'personal',  label: 'Personal' },
     { id: 'historial', label: 'Historial' },
     { id: 'roturas',   label: 'Roturas' },
-    { id: 'ajustes',   label: 'Ajustes' }
+    { id: 'ajustes',   label: 'Ajustes' },
+    { id: 'ayuda',     label: '❔ Ayuda' }
   ];
 
   /* ===================== Puente con el servidor ===================== */
@@ -528,8 +529,10 @@
   RENDER.tablero = function () {
     $('vista').innerHTML =
       '<h2 class="seccion-tit">Tablero</h2>' +
-      '<p class="seccion-sub">Qué hay para hacer. Tocá una tarjeta para ir directo.</p>' +
+      '<p class="seccion-sub">Qué hay para hacer. Tocá una tarjeta para ir directo. ' +
+        '<button id="verAyuda" class="btn-link">¿Primera vez? Mirá cómo se usa el sistema →</button></p>' +
       '<div id="tabCards">' + cargando() + '</div>';
+    var va = $('verAyuda'); if (va) va.addEventListener('click', function () { ir('ayuda'); });
     api('resumenTablero').then(pintarTablero).catch(manejar);
   };
 
@@ -582,6 +585,154 @@
       '<span class="tile-tit">' + esc(titulo) + '</span>' +
       '<span class="tile-nota">' + esc(nota) + '</span>' +
     '</button>';
+  }
+
+  /* ---------- Ayuda / Instructivo ---------- */
+  RENDER.ayuda = function () {
+    var c = S.config || {};
+    var vida = c.vidaUtil != null ? c.vidaUtil : 6;
+    var cad = c.cadencia != null ? c.cadencia : 2;
+    var techo = c.techo != null ? c.techo : (Number(vida) + Number(cad));
+    var dias = c.diasPrevision != null ? c.diasPrevision : 30;
+    var umbralTardia = Number(vida) - Number(cad);
+
+    $('vista').innerHTML =
+      '<h2 class="seccion-tit">Cómo se usa el sistema</h2>' +
+      '<p class="seccion-sub">Guía para entender qué hace cada cosa y cómo hacer cada operación. ' +
+        'Si es tu primera vez, leé de arriba hacia abajo: en 5 minutos lo tenés.</p>' +
+
+      // ---- Qué es ----
+      '<div class="card">' +
+        '<div class="card-tit">¿Qué es esto?</div>' +
+        '<p>Es el sistema de <b>compra de ropa de trabajo</b> de INGECO. Sirve para tres cosas: ' +
+          'saber <b>a quién le toca</b> ropa nueva, <b>comprar</b> exactamente esa cantidad, y <b>registrar las entregas</b>.</p>' +
+        '<p><b>No hay depósito ni stock.</b> Se compra lo que cada operario necesita y se entrega apenas llega. ' +
+          'Por eso la lista de “quién necesita qué” (la compra) es la misma que después “qué entrego”: ' +
+          'no se vuelve a tipear nada, se entrega desde lo que se compró.</p>' +
+      '</div>' +
+
+      // ---- Flujo típico ----
+      '<div class="card">' +
+        '<div class="card-tit">El trabajo de todos los días (en orden)</div>' +
+        '<ol style="line-height:1.8;margin:4px 0 0;padding-left:22px">' +
+          '<li><b>Personal → Cruce con RRHH</b> (de vez en cuando): pegás el listado oficial de RRHH y confirmás altas y bajas.</li>' +
+          '<li><b>Personal</b>: cargá los talles que falten. Tip: tildá <i>“Solo sin talle”</i> para ver a quién le falta. <b>Sin talle no se puede comprar.</b></li>' +
+          '<li><b>Comprar</b>: mirá la corrida, destildá lo que no va, y tocá <b>“Congelar esta compra”</b>.</li>' +
+          '<li>Comprás al proveedor <b>por fuera del sistema</b> (mail, teléfono, etc.).</li>' +
+          '<li>Cuando llega la ropa → <b>Entregar</b>: confirmás las entregas de esa compra. Cada entrega reinicia el reloj de la prenda.</li>' +
+          '<li>Rotura puntual → <b>Entregar → Entrega suelta</b> con motivo <b>ROTURA</b>.</li>' +
+        '</ol>' +
+      '</div>' +
+
+      // ---- Cada sección ----
+      '<h3 class="sub-tit">Qué hace cada pantalla</h3>' +
+
+      seccionAyuda('🏠 Inicio (Tablero)',
+        'La pantalla de arranque. Tarjetas con lo que hay para hacer; tocás una y vas directo.',
+        ['<b>Comprar ahora</b>: cuántas prendas están críticas hoy.',
+         '<b>Sin talle</b>: aparece solo si hay operarios sin talle cargado (esos no se pueden comprar).',
+         '<b>Entregar</b>: cuántas entregas quedan pendientes de la última compra congelada.',
+         '<b>Previsión ' + esc(dias) + ' días</b>: prendas que van a vencer pronto, para anticiparte.']) +
+
+      seccionAyuda('🛒 Comprar',
+        'Acá ves la corrida (quién necesita qué) y armás el pedido, todo en una pantalla.',
+        ['Arriba elegís el horizonte: <b>Ahora</b> (lo que corresponde hoy) o <b>+' + esc(dias) + ' días</b> (previsión, solo para mirar; ahí no se compra ni se congela).',
+         'En <b>“Quiénes y qué”</b> está la lista operario + prenda con su estado. Lo rojo es crítico.',
+         'Tildá <b>“No comprar”</b> en lo que no quieras incluir en esta compra.',
+         'Lo que dice <b>“falta”</b> en talle no se puede pedir hasta cargarlo en Personal.',
+         'Abajo se arma el <b>Pedido</b>: las matrices de cantidades por talle y grupo, y la <b>comparación de proveedores</b> (marca el ganador).',
+         'El botón verde <b>“Congelar esta compra”</b> la guarda en el Historial y arma la lista de entrega. ' +
+           '<b>Congelar no entrega ni reinicia relojes</b>: solo deja la constancia de qué compraste.']) +
+
+      seccionAyuda('📦 Entregar',
+        'Dos formas de registrar entregas.',
+        ['<b>Pendientes de la última compra</b> (arriba): lo que compraste y todavía no entregaste, agrupado por persona. ' +
+           'Revisás talle, fecha y motivo, destildás lo que no entregás y tocás <b>“Confirmar entrega”</b>. Eso reinicia el reloj de esa prenda.',
+         '<b>Entrega suelta</b> (abajo): por fuera de la compra, para una rotura o reposición puntual. ' +
+           'Buscás el legajo, elegís prendas y motivo (normalmente <b>ROTURA</b>) y registrás. No edita los talles del padrón.']) +
+
+      seccionAyuda('👥 Personal',
+        'El padrón de operarios. Acá se cargan los talles, que son la llave de todo (sin talle no se compra).',
+        ['<b>+ Nuevo operario</b>: alta manual. <b>Editar</b>: cambiar datos o talles.',
+         '<b>Baja</b> desactiva al operario (no lo borra: conserva su historial y talles). <b>Alta</b> lo reactiva.',
+         'Filtros: <b>“Ver solo activos”</b> y <b>“Solo sin talle”</b>.',
+         'Pestaña <b>“Cruce con RRHH”</b>: pegás el listado oficial (legajo, nombre, categoría) y el sistema compara por legajo y sugiere altas y bajas. Vos confirmás una por una.']) +
+
+      seccionAyuda('🧾 Historial',
+        'Todas las compras congeladas, una fila por corrida cerrada. Tocá una fila para ver el detalle (matrices y proveedor ganador).',
+        []) +
+
+      seccionAyuda('🧰 Roturas',
+        'Reporte de las entregas cargadas con motivo ROTURA y a qué edad se rompió cada prenda.',
+        ['<b>Temprana</b> = se rompió antes de los <b>' + esc(umbralTardia) + ' meses</b> de uso (vida útil − cadencia). Son las que conviene vigilar (calidad o mal uso).',
+         '<b>Tardía</b> = se rompió pasado ese punto, ya cerca de su recambio.']) +
+
+      seccionAyuda('⚙️ Ajustes',
+        'Todo se edita desde acá, sin tocar la planilla.',
+        ['<b>PIN de acceso</b>: cambiar los 4 dígitos con los que todos entran.',
+         '<b>Parámetros de cálculo</b>: vida útil, cadencia, días de previsión y fecha ancla.',
+         '<b>Proveedores y precios</b>: hasta 5 proveedores, un precio por prenda.',
+         '<b>Listas</b>: las opciones de los selectores de Personal (colores, tipos de botín, categorías, centros, talles).']) +
+
+      // ---- Glosario ----
+      '<h3 class="sub-tit">Glosario — qué significa cada palabra</h3>' +
+      '<div class="card">' +
+        defAyuda('Corrida', 'El cálculo de qué prendas corresponde comprar a una fecha. Es la base de la pantalla Comprar.') +
+        defAyuda('Congelar', 'Cerrar una compra y guardarla como constancia en el Historial. Además arma la lista de entrega.') +
+        defAyuda('Previsión', 'Mirar para adelante qué prendas van a vencer en los próximos ' + esc(dias) + ' días. Es informativa: no se compra ni se congela.') +
+        defAyuda('Grupo', 'El color de ropa (pantalón/camisa) o el tipo de botín. Sirve para agrupar las cantidades por talle en el pedido.') +
+        defAyuda('Falta talle', 'La prenda no tiene talle cargado en Personal. Por eso no se puede comprar: cargá el talle primero.') +
+      '</div>' +
+
+      '<div class="card">' +
+        '<div class="card-tit">Estado de una prenda</div>' +
+        '<p class="muted" style="margin-top:0">Es el semáforo que ves en Comprar.</p>' +
+        defBadge('<span class="badge critico">CRÍTICO</span>', 'Ya hay que comprarla: cumplió su vida útil.') +
+        defBadge('<span class="badge elegible">ELEGIBLE</span>', 'Entra en la ventana de recambio: se puede adelantar para juntar volumen.') +
+        defBadge('<span class="badge sindato">SIN DATO</span>', 'Falta la fecha de última entrega, no se puede calcular su antigüedad.') +
+        defBadge('<span class="badge inneg">INNEGOCIABLE</span>', 'Pasó el techo de ' + esc(techo) + ' meses: va sí o sí en esta compra.') +
+      '</div>' +
+
+      '<div class="card">' +
+        '<div class="card-tit">Motivos de entrega</div>' +
+        defAyuda('CICLO', 'Entrega normal por desgaste (la mayoría). Reinicia el reloj de la prenda.') +
+        defAyuda('CICLO INICIAL', 'La carga inicial del padrón: marca desde cuándo se cuenta cada prenda. No se usa en el día a día.') +
+        defAyuda('ROTURA', 'Reposición porque la prenda se rompió. Alimenta el reporte de Roturas.') +
+      '</div>' +
+
+      '<div class="card">' +
+        '<div class="card-tit">Parámetros de cálculo</div>' +
+        defAyuda('Vida útil (' + esc(vida) + ' meses)', 'Cuánto se espera que dure una prenda antes del recambio.') +
+        defAyuda('Cadencia (' + esc(cad) + ' meses)', 'Cada cuánto se agrupan las compras; abre la ventana “elegible” antes de que sea crítica.') +
+        defAyuda('Techo (' + esc(techo) + ' meses)', 'Vida útil + cadencia. Máximo absoluto: pasado ese punto la prenda es innegociable. Se calcula solo.') +
+        defAyuda('Días de previsión (' + esc(dias) + ')', 'El horizonte de la pantalla de Previsión y de la tarjeta del tablero.') +
+        defAyuda('Fecha ancla', 'La fecha de referencia desde la que el sistema organiza las corridas.') +
+      '</div>' +
+
+      // ---- Reglas clave ----
+      '<div class="card warn">' +
+        '<div class="card-tit">3 reglas que evitan errores</div>' +
+        '<ol style="line-height:1.8;margin:4px 0 0;padding-left:22px">' +
+          '<li><b>Sin talle no se compra.</b> Si una prenda no tiene talle, cargalo en Personal y recién ahí entra a la compra.</li>' +
+          '<li><b>Se entrega desde la compra.</b> Si comprás sin congelar, no hay lista pendiente para entregar. Congelá = “esto compré”.</li>' +
+          '<li><b>La baja no borra.</b> Dar de baja a un operario lo desactiva pero conserva su historial y sus talles, por si reingresa.</li>' +
+        '</ol>' +
+      '</div>';
+  };
+
+  function seccionAyuda(titulo, intro, puntos) {
+    var lista = (puntos && puntos.length)
+      ? '<ul style="line-height:1.75;margin:8px 0 0;padding-left:20px">' +
+          puntos.map(function (p) { return '<li>' + p + '</li>'; }).join('') + '</ul>'
+      : '';
+    return '<div class="card"><div class="card-tit">' + esc(titulo) + '</div>' +
+      '<p style="margin-top:0">' + intro + '</p>' + lista + '</div>';
+  }
+  function defAyuda(termino, texto) {
+    return '<p style="margin:8px 0"><b>' + esc(termino) + '</b> — ' + esc(texto) + '</p>';
+  }
+  function defBadge(badgeHtml, texto) {
+    return '<p style="margin:8px 0">' + badgeHtml + ' — ' + esc(texto) + '</p>';
   }
 
   /* ---------- Entregar: pendientes de la última compra + entrega suelta ---------- */
