@@ -2123,6 +2123,18 @@
     return '<span class="badge tag">' + esc(s || 'CICLO') + '</span>';
   }
 
+  function badgeValidacion(e) {
+    var v = String(e.validacion || '').toUpperCase();
+    if (v === 'FIRMA') {
+      return e.firmaUrl
+        ? '<a href="' + esc(e.firmaUrl) + '" target="_blank" rel="noopener">✍️ Firmada</a>'
+        : '<span class="badge tag">✍️ Firmada</span>';
+    }
+    if (v === 'PAPEL') return '<span class="badge tag" title="' + esc(e.motivoValidacion || '') + '">📄 Papel</span>';
+    if (v === 'AUSENTE') return '<span class="badge critico" title="' + esc(e.motivoValidacion || '') + '">🚫 Ausente</span>';
+    return '<span class="muted">—</span>'; // LOTE o histórico
+  }
+
   /** Modal con el historial de entregas de un operario (qué/cuándo/talle/motivo). */
   function verEntregasOperario(legajo) {
     abrirModal('Entregas', cargando());
@@ -2140,10 +2152,11 @@
           return '<tr><td>' + esc(e.fecha) + '</td><td>' + esc(e.prenda) + '</td>' +
             '<td>' + esc(e.talle || '—') + '</td>' +
             '<td>' + badgeMotivo(e.motivo) + '</td>' +
+            '<td>' + badgeValidacion(e) + '</td>' +
             '<td class="muted">' + esc(e.observaciones || '') + '</td></tr>';
         }).join('');
         cuerpo = '<p class="muted"><b>' + h.entregas.length + '</b> entrega(s), de la más nueva a la más vieja.</p>' +
-          tabla(['Fecha', 'Prenda', 'Talle', 'Motivo', 'Obs.'], rows);
+          tabla(['Fecha', 'Prenda', 'Talle', 'Motivo', 'Validación', 'Obs.'], rows);
       }
       var notas = '';
       if (h.notasNoEntrega && h.notasNoEntrega.length) {
