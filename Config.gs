@@ -31,7 +31,8 @@ var PARAM = {
   TECHO: 'techo_meses',
   FECHA_ANCLA: 'fecha_ancla_corrida',
   DIAS_PREVISION: 'dias_prevision',
-  PIN_HASH: 'pin_acceso_hash'
+  PIN_HASH: 'pin_acceso_hash',
+  CARPETA_FIRMAS: 'carpeta_firmas_id'
 };
 
 // Valores por defecto (los que siembra Setup; editables en CONFIG).

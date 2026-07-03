@@ -238,6 +238,40 @@ function asegurarColumnasEntregas_() {
   return sh;
 }
 
+/**
+ * Carpeta de Drive donde viven los PNG de firmas. Su id se guarda en CONFIG
+ * (PARAM.CARPETA_FIRMAS). Se crea al primer uso. Devuelve el Folder.
+ */
+function ensureCarpetaFirmas_() {
+  var id = getConfigMap_()[PARAM.CARPETA_FIRMAS];
+  if (id) {
+    try { return DriveApp.getFolderById(String(id)); } catch (e) { /* recrear abajo */ }
+  }
+  var carpeta = DriveApp.createFolder('Firmas Ropa INGECO');
+  escribirConfig_(PARAM.CARPETA_FIRMAS, carpeta.getId());
+  return carpeta;
+}
+
+/**
+ * Sube una firma (dataURL PNG base64) a la carpeta de firmas y devuelve su URL.
+ * base64 puede venir con o sin el prefijo "data:image/png;base64,".
+ */
+function subirFirma_(base64, legajo) {
+  var s = String(base64 || '');
+  var coma = s.indexOf(',');
+  if (s.indexOf('data:image') === 0 && coma >= 0) s = s.slice(coma + 1);
+  if (!s) throw new Error('La firma vino vacía.');
+  var bytes = Utilities.base64Decode(s);
+  var blob = Utilities.newBlob(bytes, 'image/png');
+  var d = new Date();
+  var stamp = d.getFullYear() +
+    ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '_' +
+    ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2) + ('0' + d.getSeconds()).slice(-2);
+  blob.setName('firma_' + claveLegajo_(legajo) + '_' + stamp + '.png');
+  var archivo = ensureCarpetaFirmas_().createFile(blob);
+  return archivo.getUrl();
+}
+
 /** Registra un motivo de no-entrega (una nota por persona y pasada). Append-only. */
 function registrarNoEntrega_(datos, usuario) {
   var op = buscarOperario_(datos.legajo);
