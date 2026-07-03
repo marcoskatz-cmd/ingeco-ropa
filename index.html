@@ -1103,6 +1103,7 @@
       if (!_firma || !_firma.trazos) { toast('El operario tiene que firmar, o elegí una excepción con motivo.', 'err'); return; }
       datos.validacion = { tipo: 'FIRMA', firmaBase64: _firma.canvas.toDataURL('image/png') };
     }
+    var fb = $('firmaConfirmar'); if (fb) fb.disabled = true;
     cerrarModal();
     enviarEntrega_(card, datos);
   }
