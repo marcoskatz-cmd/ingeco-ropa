@@ -177,6 +177,35 @@ function confirmarEntregas_(datos, usuario) {
   return resultado;
 }
 
+/**
+ * Confirma varias personas de una (botón "Confirmar seleccionadas"). Procesa
+ * cada entrega/nota y recalcula los pendientes UNA sola vez al final.
+ * lista = [ { legajo, fecha, motivo, items:[...], noEntrega?:{...} }, ... ]
+ */
+function confirmarEntregasVarias_(lista, usuario) {
+  lista = lista || [];
+  var confirmados = [], errores = [];
+  lista.forEach(function (datos) {
+    try {
+      var hayItems = datos.items && datos.items.length;
+      var noEnt = datos.noEntrega || null;
+      var hayNota = noEnt && String(noEnt.comentario || '').trim();
+      if (!hayItems && !hayNota) return; // nada que hacer para esta persona
+      if (hayItems) registrarEntrega_(datos);
+      if (hayNota) {
+        registrarNoEntrega_({
+          legajo: datos.legajo, fecha: datos.fecha,
+          prendas: noEnt.prendas || [], comentario: noEnt.comentario
+        }, usuario);
+      }
+      confirmados.push(datos.legajo);
+    } catch (e) {
+      errores.push({ legajo: datos.legajo, error: e.message });
+    }
+  });
+  return { ok: true, confirmados: confirmados, errores: errores, pendientes: entregasPendientes_() };
+}
+
 /* ===================== No-entregas (motivos) ===================== */
 
 /** Crea la hoja NO_ENTREGAS con encabezados si todavía no existe. */

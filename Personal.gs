@@ -114,3 +114,21 @@ function setActivoOperario_(legajo, activo) {
   data.hoja.getRange(hit.fila, col).setValue(activo ? 'SÍ' : 'NO');
   return { ok: true, legajo: legajo, activo: !!activo };
 }
+
+/**
+ * Baja/alta en lote: da de baja (activo=false) o alta (activo=true) a varios
+ * operarios en una sola pasada, leyendo PERSONAL una única vez.
+ */
+function setActivoVarios_(legajos, activo) {
+  var data = leerPersonal_();
+  var col = colPorHeader_(data.headers, P.ACTIVO);
+  var val = activo ? 'SÍ' : 'NO';
+  var actualizados = [], noEncontrados = [];
+  (legajos || []).forEach(function (leg) {
+    var hit = data.porLegajo[claveLegajo_(leg)];
+    if (!hit) { noEncontrados.push(leg); return; }
+    data.hoja.getRange(hit.fila, col).setValue(val);
+    actualizados.push(leg);
+  });
+  return { ok: true, activo: !!activo, actualizados: actualizados, noEncontrados: noEncontrados };
+}

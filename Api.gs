@@ -55,11 +55,13 @@ function enrutar_(metodo, p, sesion) {
     case 'crearOperario': return crearOperario_(p.datos || p);
     case 'actualizarOperario': return actualizarOperario_(p.legajo, p.datos || {});
     case 'setActivoOperario': return setActivoOperario_(p.legajo, !!p.activo);
+    case 'setActivoVarios': return setActivoVarios_(p.legajos || [], !!p.activo);
 
     // --- Entregas ---
     case 'registrarEntrega': return registrarEntrega_(p.datos || p);
     case 'entregasPendientes': return entregasPendientes_();
     case 'confirmarEntregas': return confirmarEntregas_(p.datos || p, usuario);
+    case 'confirmarEntregasVarias': return confirmarEntregasVarias_(p.lista || [], usuario);
     case 'historialOperario': return historialOperario_(p.legajo);
 
     // --- Comprar (corrida + previsión + pedido, unificado) ---
@@ -77,6 +79,7 @@ function enrutar_(metodo, p, sesion) {
     case 'congelarCompra': return congelarCompra_(usuario, p.exclusiones || []);
     case 'listarHistorial': return listarHistorial_();
     case 'detalleHistorial': return detalleHistorial_(p.id);
+    case 'editarCompraCongelada': return editarCompraCongelada_(p.id, p.items || [], usuario);
 
     // --- Roturas ---
     case 'reporteRoturas': return reporteRoturas_();

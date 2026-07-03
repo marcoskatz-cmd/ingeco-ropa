@@ -88,6 +88,86 @@ function listarHistorial_() {
   return filas;
 }
 
+/**
+ * Edita los ítems (personas/prendas) de una compra congelada del historial.
+ * Reescribe esa foto: recalcula matrices, totales y valorización desde las
+ * incluidas nuevas y actualiza la fila del HISTORIAL. Conserva excluidas /
+ * sinTalle como estaban (informativo). NO toca ENTREGAS ni PERSONAL.
+ *
+ * Si se edita la ÚLTIMA compra congelada, la lista de "Entregar" (que se deriva
+ * de esa foto) queda automáticamente actualizada.
+ *
+ * items = [{ legajo, prenda, talle?, grupo?, nombre?, estado? }, ...]
+ */
+function editarCompraCongelada_(idCorrida, items, usuario) {
+  var data = leerObjetos_(SHEETS.HISTORIAL);
+  var idx = -1;
+  for (var i = 0; i < data.filas.length; i++) {
+    if (String(data.filas[i].ID_CORRIDA) === String(idCorrida)) { idx = i; break; }
+  }
+  if (idx < 0) throw new Error('No existe la corrida ' + idCorrida + ' en el historial.');
+  var filaHoja = data.indiceFila[idx];
+
+  var detalle = {};
+  try { detalle = JSON.parse(data.filas[idx].DETALLE_JSON || '{}'); } catch (e) { detalle = {}; }
+
+  // Normaliza/enriquece cada ítem: nombre, talle y grupo desde PERSONAL si faltan.
+  var personal = leerPersonal_();
+  var incluidas = (items || []).map(function (it) {
+    var prenda = String(it.prenda || '').toUpperCase();
+    if (PRENDAS.indexOf(prenda) < 0) throw new Error('Prenda inválida: ' + it.prenda);
+    var hit = personal.porLegajo[claveLegajo_(it.legajo)];
+    var op = hit ? hit.obj : null;
+    var talle = (it.talle !== undefined && String(it.talle).trim() !== '')
+      ? String(it.talle).trim()
+      : (op ? String(op[talleHeaderDePrenda_(prenda)] || '') : '');
+    var grupo = (it.grupo !== undefined && String(it.grupo).trim() !== '')
+      ? String(it.grupo).trim()
+      : (op ? String((prenda === 'BOTIN' ? op[P.TIPO_BOTIN] : op[P.COLOR]) || '') : '');
+    return {
+      legajo: it.legajo, nombre: it.nombre || (op ? op[P.NOMBRE] : ''),
+      prenda: prenda, talle: talle, grupo: grupo, estado: it.estado || ''
+    };
+  });
+
+  // Recalcula matrices, totales y valorización desde las incluidas (solo con talle).
+  var matrices = {}, totales = { unidades: 0 };
+  PRENDAS.forEach(function (pr) {
+    var rows = incluidas.filter(function (f) { return f.prenda === pr && String(f.talle || '').trim() !== ''; });
+    var m = matrizPrenda_(rows);
+    matrices[pr] = m;
+    totales[pr] = m.total;
+    totales.unidades += m.total;
+  });
+  var proveedores = valorizarPedido_(totales);
+  var ganador = (proveedores && proveedores.ganador) || null;
+
+  detalle.totales = totales;
+  detalle.matrices = matrices;
+  detalle.proveedores = proveedores;
+  detalle.incluidas = incluidas.map(filaResumenHistorial_);
+  detalle.editado = fmtFecha_(hoy_());
+  detalle.editadoPor = usuario || '';
+
+  function setCol(header, val) {
+    var c = colPorHeader_(data.headers, header);
+    if (c) data.hoja.getRange(filaHoja, c).setValue(val);
+  }
+  setCol('TOTAL_PANTALON', totales.PANTALON || 0);
+  setCol('TOTAL_CAMISA', totales.CAMISA || 0);
+  setCol('TOTAL_BOTIN', totales.BOTIN || 0);
+  setCol('TOTAL_UNIDADES', totales.unidades || 0);
+  setCol('PROVEEDOR_GANADOR', ganador ? ganador.nombre : '');
+  setCol('COSTO_GANADOR', ganador ? ganador.total : '');
+  setCol('DETALLE_JSON', JSON.stringify(detalle));
+
+  return {
+    ok: true, id: idCorrida, totales: totales,
+    proveedorGanador: ganador ? ganador.nombre : '',
+    costoGanador: ganador ? ganador.total : ''
+  };
+}
+
 /** Detalle completo (DETALLE_JSON parseado) de una corrida del historial. */
 function detalleHistorial_(idCorrida) {
   var data = leerObjetos_(SHEETS.HISTORIAL);

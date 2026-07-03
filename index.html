@@ -292,6 +292,13 @@
   .mnc-saved:empty { display: none; }
   .prenda-row.excluida .mnc-saved { display: none; }
 
+  /* Personal inactivo: sección minimizada */
+  details.inactivos { margin-top: 14px; border-top: 1px dashed var(--borde); padding-top: 10px; }
+  details.inactivos > summary { cursor: pointer; user-select: none; font-weight: 600;
+    color: var(--gris); padding: 6px 2px; list-style: revert; }
+  details.inactivos > summary:hover { color: var(--texto); }
+  details.inactivos[open] > summary { margin-bottom: 8px; }
+
   /* ---------- Matriz de pedido ---------- */
   .matriz { margin-bottom: 18px; }
   .matriz table { width: auto; min-width: 320px; }
@@ -338,6 +345,7 @@
   .muted { color: var(--gris); font-size: 12px; }
   .right { text-align: right; }
   label.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  label.inline select { width: auto; }
 </style>
 </head>
 <body>
@@ -395,7 +403,9 @@
     horizonteComprar: 'ahora', // 'ahora' | 'prevision' — toggle de la pantalla Comprar
     exclusiones: {},  // { "LEGAJO|PRENDA": true } marcado como "no comprar"
     personalTab: 'padron',       // 'padron' | 'cruce' — sub-pestaña de Personal
-    personalSoloSinTalle: false  // one-shot: entrar a Personal ya filtrando "sin talle" (desde el tablero)
+    personalSoloSinTalle: false, // one-shot: entrar a Personal ya filtrando "sin talle" (desde el tablero)
+    personalOrden: 'APELLIDO Y NOMBRE', // criterio de orden de la lista de Personal
+    personalInactAbierto: false  // si la sección "Inactivos" está desplegada
   };
 
   var SECCIONES = [
@@ -489,17 +499,32 @@
 
   /* ===================== Filtros (buscador + prenda) ===================== */
   var FILTROS = {
-    comprar:   { q: '', prenda: '' },
-    entrega:   { q: '', prenda: '' },
+    comprar:   { q: '', prenda: '', orden: 'nombre' },
+    entrega:   { q: '', prenda: '', orden: 'nombre' },
     roturas:   { q: '', prenda: '' },
     personal:  { q: '' },
     historial: { q: '' }
   };
   var PRENDAS_FILTRO = ['PANTALON', 'CAMISA', 'BOTIN'];
   var PRENDA_LABEL = { PANTALON: 'Pantalón', CAMISA: 'Camisa', BOTIN: 'Botín' };
+  var ORDEN_COMPRAR = [
+    { key: 'nombre', label: 'Nombre' }, { key: 'legajo', label: 'Legajo' },
+    { key: 'centro', label: 'Centro / área' }, { key: 'urgencia', label: 'Más urgente' }
+  ];
+  var ORDEN_ENTREGA = [
+    { key: 'nombre', label: 'Nombre' }, { key: 'legajo', label: 'Legajo' }
+  ];
+  /** Comparadores reutilizables para ordenar por texto (es) o legajo (numérico). */
+  function cmpTextoEs_(a, b) { return String(a || '').localeCompare(String(b || ''), 'es', { sensitivity: 'base' }); }
+  function cmpLegajo_(a, b) {
+    var na = Number(a), nb = Number(b);
+    if (isFinite(na) && isFinite(nb)) return na - nb;
+    return cmpTextoEs_(a, b);
+  }
 
-  /** HTML de la barra de filtros. conPrenda activa los botones Todas/Pant/Cam/Botín. */
-  function filtrosHtml(state, conPrenda, placeholder) {
+  /** HTML de la barra de filtros. conPrenda activa los botones Todas/Pant/Cam/Botín.
+   *  ordenOpts (opcional): [{key,label}] agrega un "Ordenar por" (state.orden). */
+  function filtrosHtml(state, conPrenda, placeholder, ordenOpts) {
     var seg = '';
     if (conPrenda) {
       var ops = [['', 'Todas']].concat(PRENDAS_FILTRO.map(function (p) { return [p, PRENDA_LABEL[p]]; }));
@@ -508,9 +533,16 @@
           esc(o[1]) + '</button>';
       }).join('') + '</div>';
     }
+    var orden = '';
+    if (ordenOpts && ordenOpts.length) {
+      var sel = state.orden || ordenOpts[0].key;
+      orden = '<label class="inline">Ordenar por <select class="filtro-orden">' + ordenOpts.map(function (o) {
+        return '<option value="' + esc(o.key) + '"' + (o.key === sel ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+      }).join('') + '</select></label>';
+    }
     return '<div class="filtros">' +
       '<input type="search" class="filtro-q" placeholder="' + esc(placeholder || 'Buscar…') + '" value="' + esc(state.q || '') + '">' +
-      seg +
+      seg + orden +
     '</div>';
   }
 
@@ -518,6 +550,8 @@
   function wireFiltrosBar(scopeEl, state, onChange) {
     var q = scopeEl.querySelector('.filtro-q');
     if (q) q.addEventListener('input', function () { state.q = q.value; onChange(); });
+    var ord = scopeEl.querySelector('.filtro-orden');
+    if (ord) ord.addEventListener('change', function () { state.orden = ord.value; onChange(); });
     Array.prototype.forEach.call(scopeEl.querySelectorAll('.filtro-prenda .seg-btn'), function (b) {
       b.addEventListener('click', function () {
         state.prenda = b.getAttribute('data-prenda');
@@ -877,7 +911,7 @@
     $('pendBody').innerHTML = enc +
       '<div id="pendFiltros"></div>' +
       '<div id="pendCards"></div>';
-    $('pendFiltros').innerHTML = filtrosHtml(FILTROS.entrega, true, 'Buscar por legajo o nombre…');
+    $('pendFiltros').innerHTML = filtrosHtml(FILTROS.entrega, true, 'Buscar por legajo o nombre…', ORDEN_ENTREGA);
     wireFiltrosBar($('pendFiltros'), FILTROS.entrega, renderPendCards);
     renderPendCards();
   }
@@ -888,6 +922,10 @@
     var personas = entregaPend.personas.filter(function (per) {
       if (f.prenda && !per.items.some(function (it) { return String(it.prenda) === f.prenda; })) return false;
       return coincideBusqueda(f.q, [per.legajo, per.nombre]);
+    });
+    personas.sort(function (a, b) {
+      if (f.orden === 'legajo') return cmpLegajo_(a.legajo, b.legajo);
+      return cmpTextoEs_(a.nombre, b.nombre); // nombre (default)
     });
     var cont = $('pendCards'); if (!cont) return;
     if (!personas.length) { cont.innerHTML = vacio('Nada coincide con el filtro.'); return; }
@@ -901,7 +939,9 @@
         '</div>';
       }).join('');
       return '<div class="card pend-card" data-legajo="' + esc(per.legajo) + '">' +
-        '<div style="margin-bottom:8px"><b>' + esc(per.nombre || '(sin nombre)') + '</b> · legajo ' + esc(per.legajo) + '</div>' +
+        '<div style="margin-bottom:8px"><label class="inline">' +
+          '<input type="checkbox" class="pSelPer" data-legajo="' + esc(per.legajo) + '"> ' +
+          '<b>' + esc(per.nombre || '(sin nombre)') + '</b> · legajo ' + esc(per.legajo) + '</label></div>' +
         (per.notaNoEntrega && per.notaNoEntrega.comentario
           ? '<p class="muted" style="margin:-2px 0 8px">📝 Último motivo de no-entrega (' + esc(per.notaNoEntrega.fecha) + '): ' + esc(per.notaNoEntrega.comentario) + '</p>'
           : '') +
@@ -915,7 +955,19 @@
         '<button class="btn btn-primary btn-block pConf">Confirmar</button>' +
       '</div>';
     }).join('');
-    cont.innerHTML = '<div class="cards-grid">' + cards + '</div>';
+    cont.innerHTML =
+      '<div class="fila-botones bulk-bar">' +
+        '<label class="inline"><input type="checkbox" id="ePendAll"> Seleccionar todo</label>' +
+        '<button id="ePendConfSel" class="btn btn-primary btn-sm">Confirmar seleccionadas</button>' +
+      '</div>' +
+      '<div class="cards-grid">' + cards + '</div>';
+
+    var pendAll = $('ePendAll');
+    if (pendAll) pendAll.addEventListener('change', function () {
+      Array.prototype.forEach.call(cont.querySelectorAll('.pSelPer'), function (c) { c.checked = pendAll.checked; });
+    });
+    var pendConf = $('ePendConfSel');
+    if (pendConf) pendConf.addEventListener('click', confirmarSeleccionadas_);
 
     Array.prototype.forEach.call(cont.querySelectorAll('.pend-card'), function (card) {
       Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
@@ -935,7 +987,9 @@
     if (wrap) wrap.classList.toggle('oculto', !hayNoEnt);
   }
 
-  function confirmarPersona(card) {
+  /** Junta lo tildado de una tarjeta de entrega. Devuelve el `datos` para el
+   *  backend, o null si no hay ni prendas tildadas ni motivo escrito. No avisa. */
+  function recolectarEntrega_(card) {
     var items = [], noEntregadas = [];
     Array.prototype.forEach.call(card.querySelectorAll('.item-prenda'), function (row) {
       var pr = row.getAttribute('data-prenda');
@@ -947,10 +1001,7 @@
     });
     var ta = card.querySelector('.pNoEnt');
     var comentario = ta ? ta.value.trim() : '';
-    if (!items.length && !comentario) {
-      toast('Elegí al menos una prenda, o escribí el motivo de por qué no se entrega.', 'err');
-      return;
-    }
+    if (!items.length && !comentario) return null;
     var datos = {
       legajo: card.getAttribute('data-legajo'),
       fecha: inputAFecha(card.querySelector('.pFecha').value),
@@ -959,6 +1010,15 @@
     };
     if (comentario && noEntregadas.length) {
       datos.noEntrega = { prendas: noEntregadas, comentario: comentario };
+    }
+    return datos;
+  }
+
+  function confirmarPersona(card) {
+    var datos = recolectarEntrega_(card);
+    if (!datos) {
+      toast('Elegí al menos una prenda, o escribí el motivo de por qué no se entrega.', 'err');
+      return;
     }
     var btn = card.querySelector('.pConf');
     btn.disabled = true;
@@ -970,6 +1030,24 @@
       toast(msg, 'ok');
       pintarPendientes(r.pendientes);
     }).catch(function (e) { btn.disabled = false; manejar(e); });
+  }
+
+  /** Confirma en lote todas las tarjetas con la casilla de persona tildada. */
+  function confirmarSeleccionadas_() {
+    var cont = $('pendCards'); if (!cont) return;
+    var seleccionadas = Array.prototype.slice.call(cont.querySelectorAll('.pend-card'))
+      .filter(function (card) { var s = card.querySelector('.pSelPer'); return s && s.checked; });
+    if (!seleccionadas.length) { toast('Seleccioná al menos una persona.', 'err'); return; }
+    var lista = [];
+    seleccionadas.forEach(function (card) { var d = recolectarEntrega_(card); if (d) lista.push(d); });
+    if (!lista.length) { toast('Las personas seleccionadas no tienen prendas tildadas ni motivo.', 'err'); return; }
+    if (!window.confirm('¿Confirmar la entrega de ' + lista.length + ' persona(s) con fecha y prendas tildadas?')) return;
+    var btn = $('ePendConfSel'); if (btn) btn.disabled = true;
+    api('confirmarEntregasVarias', { lista: lista }).then(function (r) {
+      var okN = (r.confirmados || []).length, errN = (r.errores || []).length;
+      toast('Entregas confirmadas: ' + okN + (errN ? ' · ' + errN + ' con error' : '') + '.', errN ? 'err' : 'ok');
+      pintarPendientes(r.pendientes);
+    }).catch(function (e) { if (btn) btn.disabled = false; manejar(e); });
   }
 
   function pintarEntregaSuelta() {
@@ -1109,7 +1187,7 @@
 
     $('comprarBody').innerHTML =
       '<p class="seccion-sub">' + sub + '</p>' +
-      chipsResumen(v.resumen || {}) +
+      chipsResumen(resumenPorPersona(v.filas || [])) +
       '<div class="card">' +
         '<div class="card-tit">Quiénes y qué</div>' +
         '<p class="muted">' + aviso + '</p>' +
@@ -1118,7 +1196,7 @@
       '</div>' +
       '<div id="pedidoPane" class="pedido-pane">' + pedidoPaneHtml(v.pedido, v.horizonte) + '</div>';
 
-    $('comprarFiltros').innerHTML = filtrosHtml(FILTROS.comprar, true, 'Buscar por legajo, nombre o centro…');
+    $('comprarFiltros').innerHTML = filtrosHtml(FILTROS.comprar, true, 'Buscar por legajo, nombre o centro…', ORDEN_COMPRAR);
     wireFiltrosBar($('comprarFiltros'), FILTROS.comprar, renderComprarTabla);
     renderComprarTabla();
 
@@ -1130,6 +1208,23 @@
   }
 
   var comprarFilas = [], comprarEditable = true;
+  /** Rango de urgencia de un operario = su prenda más urgente (crítico>elegible>otro). */
+  function rangoGrupoComprar_(p) {
+    var rank = { CRITICO: 3, ELEGIBLE: 2 };
+    var max = 0;
+    (p.prendas || []).forEach(function (r) { var v = rank[r.estado] || 1; if (v > max) max = v; });
+    return max;
+  }
+  /** Ordena in-place las claves de grupo `orden` según el criterio elegido. */
+  function ordenarGruposComprar_(orden, porLeg, criterio) {
+    orden.sort(function (ka, kb) {
+      var a = porLeg[ka], b = porLeg[kb];
+      if (criterio === 'legajo') return cmpLegajo_(a.legajo, b.legajo);
+      if (criterio === 'centro') return cmpTextoEs_(a.centro, b.centro) || cmpTextoEs_(a.nombre, b.nombre);
+      if (criterio === 'urgencia') return (rangoGrupoComprar_(b) - rangoGrupoComprar_(a)) || cmpTextoEs_(a.nombre, b.nombre);
+      return cmpTextoEs_(a.nombre, b.nombre); // nombre (default)
+    });
+  }
   function renderComprarTabla() {
     var f = FILTROS.comprar;
     var list = comprarFilas.filter(function (r) {
@@ -1148,6 +1243,7 @@
       if (!porLeg[k]) { porLeg[k] = { legajo: r.legajo, nombre: r.nombre, centro: r.centro, prendas: [] }; orden.push(k); }
       porLeg[k].prendas.push(r);
     });
+    ordenarGruposComprar_(orden, porLeg, f.orden);
     var cards = orden.map(function (k) {
       var p = porLeg[k];
       var critico = p.prendas.some(function (r) { return r.estado === 'CRITICO'; });
@@ -1246,11 +1342,32 @@
       });
   }
 
+  /** Resumen de la compra contado POR PERSONA (no por prenda). A cada operario
+   *  se lo clasifica por su prenda más urgente (crítico > elegible > sin dato),
+   *  así críticos + elegibles + sin dato = total de personas. "Falta talle" es
+   *  ortogonal: personas con al menos una prenda sin talle cargado. */
+  function resumenPorPersona(filas) {
+    var rank = { CRITICO: 3, ELEGIBLE: 2 };
+    var worst = {}, falta = {};
+    (filas || []).forEach(function (f) {
+      var k = String(f.legajo).toUpperCase().replace(/\s+/g, '');
+      var rv = rank[f.estado] || 1; // sin dato = 1
+      if (!(k in worst) || rv > worst[k]) worst[k] = rv;
+      if (f.faltaTalle) falta[k] = true;
+    });
+    var r = { personas: 0, criticos: 0, elegibles: 0, sinDato: 0, faltaTalle: Object.keys(falta).length };
+    Object.keys(worst).forEach(function (k) {
+      r.personas++;
+      if (worst[k] === 3) r.criticos++; else if (worst[k] === 2) r.elegibles++; else r.sinDato++;
+    });
+    return r;
+  }
+
   function chipsResumen(r) {
     return '<div class="chips">' +
-      '<div class="chip cobalto"><b>' + (r.total || 0) + '</b><span>Total</span></div>' +
-      '<div class="chip rojo"><b>' + (r.criticos || 0) + '</b><span>Críticos</span></div>' +
-      '<div class="chip amarillo"><b>' + (r.elegibles || 0) + '</b><span>Elegibles</span></div>' +
+      '<div class="chip cobalto"><b>' + (r.personas || 0) + '</b><span>Personas</span></div>' +
+      '<div class="chip rojo"><b>' + (r.criticos || 0) + '</b><span>Con crítico</span></div>' +
+      '<div class="chip amarillo"><b>' + (r.elegibles || 0) + '</b><span>Con elegible</span></div>' +
       '<div class="chip"><b>' + (r.sinDato || 0) + '</b><span>Sin dato</span></div>' +
       '<div class="chip"><b>' + (r.faltaTalle || 0) + '</b><span>Falta talle</span></div>' +
     '</div>';
@@ -1399,6 +1516,7 @@
       '<div class="chip rojo"><b>' + (r.bajas || 0) + '</b><span>Bajas</span></div>' +
       '<div class="chip amarillo"><b>' + (r.altas || 0) + '</b><span>Altas</span></div>' +
       '<div class="chip"><b>' + (r.coinciden || 0) + '</b><span>Coinciden</span></div>' +
+      (r.revisar ? '<div class="chip amarillo"><b>' + r.revisar + '</b><span>Revisar</span></div>' : '') +
     '</div>';
 
     var bajas = c.bajas.map(function (b) {
@@ -1438,12 +1556,33 @@
         '<p class="muted">El cruce no cambia categorías solo; si querés actualizarlas, hacelo en Personal.</p></div>'
       : '';
 
-    $('rResultado').innerHTML = chips + tBajas + tAltas + tCoin +
-      ((c.bajas.length || c.altas.length)
+    var revisar = (c.revisar || []).map(function (v) {
+      return '<tr>' +
+        '<td>' + esc(v.nombre || '') + '</td>' +
+        '<td>' + esc(v.legajoRRHH) + '</td>' +
+        '<td>' + esc(v.legajoPadron) + '</td>' +
+        '<td class="muted">' + esc(v.categoriaRRHH || v.categoriaPadron || '') + '</td>' +
+        '<td><select class="rev-accion" data-legajo-rrhh="' + esc(v.legajoRRHH) + '" data-legajo-padron="' + esc(v.legajoPadron) + '"' +
+            ' data-nombre="' + esc(v.nombre || '') + '" data-categoria="' + esc(v.categoriaRRHH || '') + '">' +
+            '<option value="IGNORAR">Misma persona (no cambiar)</option>' +
+            '<option value="SEPARAR">Son distintas: baja ' + esc(v.legajoPadron) + ' + alta ' + esc(v.legajoRRHH) + '</option>' +
+          '</select></td>' +
+      '</tr>';
+    }).join('');
+    var tRev = (c.revisar && c.revisar.length)
+      ? '<div class="card"><div class="card-tit">⚠️ Revisar — mismo nombre, legajo distinto (posible error de tipeo)</div>' +
+        '<p class="muted">RRHH trae un legajo que no está en el padrón, pero hay un activo con el mismo nombre. ' +
+          'Si es la misma persona, dejalo en “no cambiar” (no se da de baja ni de alta). Si de verdad son dos personas distintas, elegí separar.</p>' +
+        tabla(['Nombre', 'Legajo RRHH', 'Legajo padrón', 'Categoría', 'Decisión'], revisar) + '</div>'
+      : '';
+
+    var hayCambios = c.bajas.length || c.altas.length || (c.revisar && c.revisar.length);
+    $('rResultado').innerHTML = chips + tBajas + tAltas + tRev + tCoin +
+      (hayCambios
         ? '<div class="fila-botones"><button id="rAplicar" class="btn btn-primary">Aplicar seleccionados</button></div>'
         : '');
 
-    if (c.bajas.length || c.altas.length) {
+    if (hayCambios) {
       $('rAplicar').addEventListener('click', aplicarCruce);
     }
   }
@@ -1457,6 +1596,15 @@
       cambios.push({
         legajo: chk.getAttribute('data-legajo'), accion: 'DAR DE ALTA',
         nombre: chk.getAttribute('data-nombre'), categoria: chk.getAttribute('data-categoria')
+      });
+    });
+    // Casos "revisar" marcados como distintas personas: baja del padrón + alta de RRHH.
+    Array.prototype.forEach.call($('rResultado').querySelectorAll('.rev-accion'), function (sel) {
+      if (sel.value !== 'SEPARAR') return;
+      cambios.push({ legajo: sel.getAttribute('data-legajo-padron'), accion: 'DAR DE BAJA' });
+      cambios.push({
+        legajo: sel.getAttribute('data-legajo-rrhh'), accion: 'DAR DE ALTA',
+        nombre: sel.getAttribute('data-nombre'), categoria: sel.getAttribute('data-categoria')
       });
     });
     if (!cambios.length) { toast('No seleccionaste ningún cambio.', 'err'); return; }
@@ -1519,10 +1667,96 @@
       $('modalCuerpo').innerHTML =
         '<p><b>Corrida:</b> ' + esc(d.fechaCorrida) + ' · <b>Congelado:</b> ' + esc(d.fechaCongelado) +
           ' · <b>Por:</b> ' + esc(d.usuario) + '</p>' +
+        (det.editado ? '<p class="muted">✏️ Editada el ' + esc(det.editado) + (det.editadoPor ? ' por ' + esc(det.editadoPor) : '') + '.</p>' : '') +
         '<p><b>Totales:</b> ' + (t.unidades || 0) + ' u (' + (t.PANTALON || 0) + '/' + (t.CAMISA || 0) + '/' + (t.BOTIN || 0) + ')' +
           ' · <b>Ganador:</b> ' + (g ? esc(g.nombre) + ' ' + money(g.total) : '—') + '</p>' +
+        '<div class="fila-botones"><button id="hEditar" class="btn btn-primary">Editar ítems</button></div>' +
         (matr || vacio('Sin matrices guardadas.'));
+      $('hEditar').addEventListener('click', function () { editarCompraHist_(id, det); });
     }).catch(function (e) { $('modalCuerpo').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
+  }
+
+  /** Vista de edición de una compra congelada: agregar/quitar prendas y talles. */
+  function editarCompraHist_(id, det) {
+    // Aseguro el padrón en memoria para poder mostrar el nombre al agregar una
+    // prenda por legajo (el backend igual lo completa al guardar, esto es visual).
+    if (!S._personal) {
+      api('listarPersonal', { soloActivos: false }).then(function (lista) {
+        S._personal = {};
+        (lista || []).forEach(function (o) { S._personal[String(o['LEGAJO'])] = o; });
+      }).catch(function () {});
+    }
+    var incluidas = det.incluidas || [];
+    function celdaFila_(it) {
+      return '<tr class="he-row" data-legajo="' + esc(it.legajo) + '" data-prenda="' + esc(it.prenda) +
+          '" data-grupo="' + esc(it.grupo || '') + '" data-nombre="' + esc(it.nombre || '') + '" data-estado="' + esc(it.estado || '') + '">' +
+        '<td>' + esc(it.legajo) + '</td>' +
+        '<td>' + esc(it.nombre || '') + '</td>' +
+        '<td>' + esc(PRENDA_LABEL[it.prenda] || it.prenda) + '</td>' +
+        '<td><input type="text" class="he-talle" value="' + esc(it.talle || '') + '" style="width:80px"></td>' +
+        '<td><button class="btn btn-sm btn-ghost he-quitar" title="Quitar">✕</button></td>' +
+      '</tr>';
+    }
+    var prendaOpts = ['PANTALON', 'CAMISA', 'BOTIN'].map(function (pr) {
+      return '<option value="' + pr + '">' + esc(PRENDA_LABEL[pr] || pr) + '</option>';
+    }).join('');
+    $('modalCuerpo').innerHTML =
+      '<p class="muted">Agregá o quitá prendas de esta compra congelada. Al guardar se recalculan totales y proveedor ganador. ' +
+        'Si es la última compra congelada, también se actualiza lo pendiente de entregar.</p>' +
+      '<div class="tabla-wrap"><table class="tabla" id="heTabla"><thead><tr>' +
+        '<th>Legajo</th><th>Nombre</th><th>Prenda</th><th>Talle</th><th></th>' +
+      '</tr></thead><tbody>' + incluidas.map(celdaFila_).join('') + '</tbody></table></div>' +
+      '<div class="card" style="margin-top:10px"><div class="card-tit">Agregar prenda</div>' +
+        '<div class="grid2">' +
+          '<label class="campo"><span>Legajo</span><input id="heAddLeg" type="text" placeholder="N° de legajo"></label>' +
+          '<label class="campo"><span>Prenda</span><select id="heAddPr">' + prendaOpts + '</select></label>' +
+        '</div>' +
+        '<div class="grid2">' +
+          '<label class="campo"><span>Talle (opcional)</span><input id="heAddTalle" type="text" placeholder="si se deja vacío, se toma del padrón"></label>' +
+          '<label class="campo"><span>&nbsp;</span><button id="heAdd" class="btn btn-ghost btn-block">+ Agregar a la lista</button></label>' +
+        '</div>' +
+      '</div>' +
+      '<div class="fila-botones"><button id="heGuardar" class="btn btn-primary">Guardar cambios</button>' +
+        '<button id="heCancelar" class="btn btn-ghost">Cancelar</button></div>';
+
+    function wireQuitar_() {
+      Array.prototype.forEach.call($('heTabla').querySelectorAll('.he-quitar'), function (b) {
+        b.onclick = function () { var tr = b.closest('tr'); if (tr && tr.parentNode) tr.parentNode.removeChild(tr); };
+      });
+    }
+    wireQuitar_();
+
+    $('heAdd').addEventListener('click', function () {
+      var leg = $('heAddLeg').value.trim();
+      if (!leg) { toast('Escribí un legajo.', 'err'); return; }
+      var pr = $('heAddPr').value;
+      var talle = $('heAddTalle').value.trim();
+      var nombre = (S._personal && S._personal[leg]) ? (S._personal[leg]['APELLIDO Y NOMBRE'] || '') : '';
+      var tbody = $('heTabla').querySelector('tbody');
+      tbody.insertAdjacentHTML('beforeend', celdaFila_({ legajo: leg, nombre: nombre, prenda: pr, talle: talle, grupo: '', estado: '' }));
+      wireQuitar_();
+      $('heAddLeg').value = ''; $('heAddTalle').value = '';
+    });
+    $('heCancelar').addEventListener('click', function () { verDetalleHist(id); });
+    $('heGuardar').addEventListener('click', function () {
+      var items = Array.prototype.map.call($('heTabla').querySelectorAll('.he-row'), function (tr) {
+        return {
+          legajo: tr.getAttribute('data-legajo'),
+          prenda: tr.getAttribute('data-prenda'),
+          talle: tr.querySelector('.he-talle').value.trim(),
+          grupo: tr.getAttribute('data-grupo') || '',
+          nombre: tr.getAttribute('data-nombre') || '',
+          estado: tr.getAttribute('data-estado') || ''
+        };
+      });
+      if (!window.confirm('Vas a reescribir la compra ' + id + ' con ' + items.length + ' prenda(s). ¿Confirmás?')) return;
+      $('heGuardar').disabled = true;
+      api('editarCompraCongelada', { id: id, items: items }).then(function (r) {
+        toast('Compra actualizada: ' + (r.totales ? r.totales.unidades : 0) + ' u.', 'ok');
+        cerrarModal();
+        if (RENDER.historial) RENDER.historial();
+      }).catch(function (e) { $('heGuardar').disabled = false; manejar(e); });
+    });
   }
 
   /* ---------- Roturas ---------- */
@@ -1626,14 +1860,44 @@
     $('perBody').innerHTML =
       '<div class="filtros"><input type="search" id="pBuscar" class="filtro-q" placeholder="Buscar por legajo, nombre, categoría o centro…" value="' + esc(FILTROS.personal.q) + '"></div>' +
       '<div class="fila-botones"><button id="pNuevo" class="btn btn-primary">+ Nuevo operario</button>' +
-        '<label class="inline"><input type="checkbox" id="pSoloAct"> Ver solo activos</label>' +
+        '<label class="inline">Ordenar por <select id="pOrden">' + ordenPersonalOpciones() + '</select></label>' +
         '<label class="inline"><input type="checkbox" id="pSinTalle"' + (sinTalleIni ? ' checked' : '') + '> Solo sin talle</label></div>' +
       '<div id="pLista">' + cargando() + '</div>';
     $('pNuevo').addEventListener('click', function () { formOperario(null); });
-    $('pSoloAct').addEventListener('change', cargarPersonal);
+    $('pOrden').addEventListener('change', function () { S.personalOrden = $('pOrden').value; renderPersonalLista(); });
     $('pSinTalle').addEventListener('change', renderPersonalLista);
     $('pBuscar').addEventListener('input', function () { FILTROS.personal.q = $('pBuscar').value; renderPersonalLista(); });
     cargarPersonal();
+  }
+  var ORDEN_PERSONAL = [
+    { key: 'APELLIDO Y NOMBRE', label: 'Nombre' },
+    { key: 'LEGAJO', label: 'Legajo' },
+    { key: 'CATEGORÍA', label: 'Categoría' },
+    { key: 'CENTRO DE COSTO', label: 'Centro / área' },
+    { key: 'COLOR ROPA', label: 'Color de ropa' },
+    { key: 'ULTIMA_ENTREGA', label: 'Última entrega' }
+  ];
+  function ordenPersonalOpciones() {
+    return ORDEN_PERSONAL.map(function (o) {
+      return '<option value="' + esc(o.key) + '"' + (o.key === S.personalOrden ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+    }).join('');
+  }
+  function msFechaCorta_(v) {
+    var m = String(v || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m) return 0;
+    var yy = m[3].length === 2 ? '20' + m[3] : m[3];
+    return new Date(Number(yy), Number(m[2]) - 1, Number(m[1])).getTime();
+  }
+  function ordenarPersonal_(arr) {
+    var key = S.personalOrden || 'APELLIDO Y NOMBRE';
+    return arr.slice().sort(function (a, b) {
+      if (key === 'LEGAJO') {
+        var na = Number(a['LEGAJO']), nb = Number(b['LEGAJO']);
+        if (isFinite(na) && isFinite(nb)) return na - nb;
+      }
+      if (key === 'ULTIMA_ENTREGA') return msFechaCorta_(b[key]) - msFechaCorta_(a[key]); // más reciente primero
+      return String(a[key] || '').localeCompare(String(b[key] || ''), 'es', { sensitivity: 'base' });
+    });
   }
   function leFaltaTalle(o) {
     return !String(o['TALLE PANT'] || '').trim() ||
@@ -1646,14 +1910,40 @@
   }
   var personalLista = [];
   function cargarPersonal() {
-    var soloActivos = $('pSoloAct') && $('pSoloAct').checked;
-    api('listarPersonal', { soloActivos: soloActivos }).then(function (lista) {
+    // Siempre traemos a todos: los inactivos se muestran aparte (minimizados).
+    api('listarPersonal', { soloActivos: false }).then(function (lista) {
       personalLista = lista || [];
       // Mapa completo para la edición rápida (antes de filtrar lo que se muestra).
       S._personal = {};
       personalLista.forEach(function (o) { S._personal[String(o['LEGAJO'])] = o; });
       renderPersonalLista();
     }).catch(function (e) { $('pLista').innerHTML = '<div class="error">' + esc(e.message) + '</div>'; });
+  }
+  function esActivoOp_(o) {
+    return /^s[ií]$|^true$|^x$|^1$/i.test(String(o['ACTIVO']).trim());
+  }
+  function filaPersonal_(o) {
+    var leg = o['LEGAJO'];
+    var activo = esActivoOp_(o);
+    return '<tr>' +
+      '<td class="center"><input type="checkbox" class="pSel" data-legajo="' + esc(leg) + '"></td>' +
+      '<td>' + esc(leg) + '</td>' +
+      '<td>' + esc(o['APELLIDO Y NOMBRE']) + '</td>' +
+      '<td>' + esc(o['CATEGORÍA'] || '') + '</td>' +
+      '<td>' + esc(o['CENTRO DE COSTO'] || '') + '</td>' +
+      '<td>' + esc(o['COLOR ROPA'] || '') + '</td>' +
+      '<td class="muted">' + celdaTalle(o['TALLE PANT']) + ' / ' + celdaTalle(o['TALLE CAM']) + ' / ' + celdaTalle(o['TALLE BOTÍN']) + '</td>' +
+      '<td>' + (o['ULTIMA_ENTREGA'] ? esc(o['ULTIMA_ENTREGA']) : '<span class="muted">—</span>') + '</td>' +
+      '<td>' + (activo ? '<span class="badge elegible">activo</span>' : '<span class="badge sindato">inactivo</span>') + '</td>' +
+      '<td><button class="btn btn-sm btn-ghost pEnt" data-legajo="' + esc(leg) + '">Entregas</button> ' +
+        '<button class="btn btn-sm btn-ghost pEdit" data-legajo="' + esc(leg) + '">Editar</button> ' +
+        '<button class="btn btn-sm pToggle" data-legajo="' + esc(leg) + '" data-activo="' + (activo ? '1' : '0') + '">' +
+          (activo ? 'Baja' : 'Alta') + '</button></td>' +
+    '</tr>';
+  }
+  function colsPersonal_(masterId) {
+    return ['<input type="checkbox" id="' + masterId + '" title="Seleccionar todo">',
+      'Legajo', 'Nombre', 'Categoría', 'Centro', 'Color', 'Talles P/C/B', 'Última entrega', 'Estado', ''];
   }
   function renderPersonalLista() {
     var soloSinTalle = $('pSinTalle') && $('pSinTalle').checked;
@@ -1666,27 +1956,32 @@
       $('pLista').innerHTML = vacio((soloSinTalle || (q && q.trim())) ? 'Nada coincide con el filtro.' : 'No hay operarios.');
       return;
     }
-    var rows = visibles.map(function (o) {
-      var leg = o['LEGAJO'];
-      var activo = /^s[ií]$|^true$|^x$|^1$/i.test(String(o['ACTIVO']).trim());
-      return '<tr>' +
-        '<td>' + esc(leg) + '</td>' +
-        '<td>' + esc(o['APELLIDO Y NOMBRE']) + '</td>' +
-        '<td>' + esc(o['CATEGORÍA'] || '') + '</td>' +
-        '<td>' + esc(o['CENTRO DE COSTO'] || '') + '</td>' +
-        '<td>' + esc(o['COLOR ROPA'] || '') + '</td>' +
-        '<td class="muted">' + celdaTalle(o['TALLE PANT']) + ' / ' + celdaTalle(o['TALLE CAM']) + ' / ' + celdaTalle(o['TALLE BOTÍN']) + '</td>' +
-        '<td>' + (o['ULTIMA_ENTREGA'] ? esc(o['ULTIMA_ENTREGA']) : '<span class="muted">—</span>') + '</td>' +
-        '<td>' + (activo ? '<span class="badge elegible">activo</span>' : '<span class="badge sindato">inactivo</span>') + '</td>' +
-        '<td><button class="btn btn-sm btn-ghost pEnt" data-legajo="' + esc(leg) + '">Entregas</button> ' +
-          '<button class="btn btn-sm btn-ghost pEdit" data-legajo="' + esc(leg) + '">Editar</button> ' +
-          '<button class="btn btn-sm pToggle" data-legajo="' + esc(leg) + '" data-activo="' + (activo ? '1' : '0') + '">' +
-            (activo ? 'Baja' : 'Alta') + '</button></td>' +
-      '</tr>';
-    }).join('');
-    $('pLista').innerHTML =
-      '<p class="muted">' + visibles.length + ' operario(s)' + (soloSinTalle ? ' sin talle completo' : '') + '.</p>' +
-      tabla(['Legajo', 'Nombre', 'Categoría', 'Centro', 'Color', 'Talles P/C/B', 'Última entrega', 'Estado', ''], rows);
+    var activos = ordenarPersonal_(visibles.filter(esActivoOp_));
+    var inactivos = ordenarPersonal_(visibles.filter(function (o) { return !esActivoOp_(o); }));
+
+    var htmlActivos = activos.length
+      ? '<p class="muted">' + activos.length + ' operario(s) activo(s)' + (soloSinTalle ? ' sin talle completo' : '') + '.</p>' +
+        '<div class="fila-botones"><button id="pBajaSel" class="btn btn-sm">Dar de baja seleccionados</button></div>' +
+        tabla(colsPersonal_('pSelAllAct'), activos.map(filaPersonal_).join(''))
+      : '<p class="muted">No hay operarios activos que coincidan con el filtro.</p>';
+
+    var htmlInactivos = inactivos.length
+      ? '<details class="inactivos"' + (S.personalInactAbierto ? ' open' : '') + '>' +
+          '<summary>Inactivos (' + inactivos.length + ')</summary>' +
+          '<div class="fila-botones"><button id="pAltaSel" class="btn btn-sm">Dar de alta seleccionados</button></div>' +
+          tabla(colsPersonal_('pSelAllInact'), inactivos.map(filaPersonal_).join('')) +
+        '</details>'
+      : '';
+
+    $('pLista').innerHTML = htmlActivos + htmlInactivos;
+
+    var det = $('pLista').querySelector('details.inactivos');
+    if (det) det.addEventListener('toggle', function () { S.personalInactAbierto = det.open; });
+
+    wireMasterSel_('pSelAllAct');
+    wireMasterSel_('pSelAllInact');
+    var bBaja = $('pBajaSel'); if (bBaja) bBaja.addEventListener('click', function () { bajaAltaSeleccionados_(false); });
+    var bAlta = $('pAltaSel'); if (bAlta) bAlta.addEventListener('click', function () { bajaAltaSeleccionados_(true); });
 
     Array.prototype.forEach.call($('pLista').querySelectorAll('.pEnt'), function (b) {
       b.addEventListener('click', function () { verEntregasOperario(b.getAttribute('data-legajo')); });
@@ -1703,6 +1998,33 @@
         }).catch(manejar);
       });
     });
+  }
+
+  /** Checkbox maestro: marca/desmarca todas las casillas .pSel de su tabla. */
+  function wireMasterSel_(masterId) {
+    var m = $(masterId); if (!m) return;
+    m.addEventListener('change', function () {
+      var tbl = m.closest('table'); if (!tbl) return;
+      Array.prototype.forEach.call(tbl.querySelectorAll('.pSel'), function (c) { c.checked = m.checked; });
+    });
+  }
+  /** Legajos con casilla tildada dentro de la tabla del checkbox maestro dado. */
+  function legajosSeleccionados_(masterId) {
+    var m = $(masterId); if (!m) return [];
+    var tbl = m.closest('table'); if (!tbl) return [];
+    return Array.prototype.slice.call(tbl.querySelectorAll('.pSel:checked'))
+      .map(function (c) { return c.getAttribute('data-legajo'); });
+  }
+  function bajaAltaSeleccionados_(activar) {
+    var legajos = legajosSeleccionados_(activar ? 'pSelAllInact' : 'pSelAllAct');
+    if (!legajos.length) { toast('Seleccioná al menos un operario.', 'err'); return; }
+    var verbo = activar ? 'dar de alta' : 'dar de baja';
+    if (!window.confirm('¿Seguro que querés ' + verbo + ' a ' + legajos.length + ' operario(s)?')) return;
+    api('setActivoVarios', { legajos: legajos, activo: activar }).then(function (r) {
+      var n = (r && r.actualizados) ? r.actualizados.length : legajos.length;
+      toast((activar ? 'Alta' : 'Baja') + ' aplicada a ' + n + ' operario(s).', 'ok');
+      cargarPersonal();
+    }).catch(manejar);
   }
 
   function badgeMotivo(m) {
@@ -1758,43 +2080,47 @@
   }
 
   function lst(key) { return (S.listas && S.listas[key]) || []; }
-  function dataList(id, key) {
-    return '<datalist id="' + id + '">' + lst(key).map(function (v) {
-      return '<option value="' + esc(v) + '">';
-    }).join('') + '</datalist>';
-  }
   function campo(label, id, valor, listaId) {
     return '<label class="campo"><span>' + esc(label) + '</span>' +
       '<input id="' + id + '" type="text" value="' + esc(valor || '') + '"' +
       (listaId ? ' list="' + listaId + '"' : '') + '></label>';
+  }
+  /** Campo con lista cerrada como <select> (se despliega con un clic). Preserva
+   *  el valor guardado aunque ya no esté en la lista y ofrece opción vacía. */
+  function campoSelect(label, id, valor, key) {
+    valor = valor || '';
+    var vals = lst(key).slice();
+    if (valor && vals.indexOf(valor) < 0) vals.unshift(valor);
+    var opts = '<option value=""></option>' + vals.map(function (vv) {
+      return '<option value="' + esc(vv) + '"' + (vv === valor ? ' selected' : '') + '>' + esc(vv) + '</option>';
+    }).join('');
+    return '<label class="campo"><span>' + esc(label) + '</span>' +
+      '<select id="' + id + '">' + opts + '</select></label>';
   }
 
   function formOperario(o) {
     var esNuevo = !o;
     var v = function (k) { return o ? (o[k] || '') : ''; };
     var html =
-      dataList('dlCat', 'CATEGORIA') + dataList('dlCen', 'CENTRO DE COSTO') +
-      dataList('dlCol', 'COLOR ROPA') + dataList('dlBot', 'TIPO BOTIN') +
-      dataList('dlTP', 'TALLE PANT') + dataList('dlTC', 'TALLE CAM') + dataList('dlTB', 'TALLE BOTIN') +
       '<div class="grid2">' +
         '<label class="campo"><span>Legajo</span><input id="oLegajo" type="text" value="' + esc(v('LEGAJO')) + '"' +
           (esNuevo ? '' : ' disabled') + '></label>' +
         campo('Apellido y nombre', 'oNombre', v('APELLIDO Y NOMBRE')) +
       '</div>' +
       '<div class="grid2">' +
-        campo('Categoría', 'oCat', v('CATEGORÍA'), 'dlCat') +
-        campo('Centro de costo', 'oCen', v('CENTRO DE COSTO'), 'dlCen') +
+        campoSelect('Categoría', 'oCat', v('CATEGORÍA'), 'CATEGORIA') +
+        campoSelect('Centro de costo', 'oCen', v('CENTRO DE COSTO'), 'CENTRO DE COSTO') +
       '</div>' +
       '<div class="grid2">' +
-        campo('Color ropa', 'oColor', v('COLOR ROPA'), 'dlCol') +
-        campo('Tipo botín', 'oTipoBot', v('TIPO BOTÍN'), 'dlBot') +
+        campoSelect('Color ropa', 'oColor', v('COLOR ROPA'), 'COLOR ROPA') +
+        campoSelect('Tipo botín', 'oTipoBot', v('TIPO BOTÍN'), 'TIPO BOTIN') +
       '</div>' +
       '<div class="grid2">' +
-        campo('Talle pantalón', 'oTP', v('TALLE PANT'), 'dlTP') +
-        campo('Talle camisa', 'oTC', v('TALLE CAM'), 'dlTC') +
+        campoSelect('Talle pantalón', 'oTP', v('TALLE PANT'), 'TALLE PANT') +
+        campoSelect('Talle camisa', 'oTC', v('TALLE CAM'), 'TALLE CAM') +
       '</div>' +
       '<div class="grid2">' +
-        campo('Talle botín', 'oTB', v('TALLE BOTÍN'), 'dlTB') +
+        campoSelect('Talle botín', 'oTB', v('TALLE BOTÍN'), 'TALLE BOTIN') +
         '<label class="campo"><span>&nbsp;</span><span class="muted">' +
           (esNuevo ? 'Se crea activo.' : 'El estado se cambia desde la lista.') + '</span></label>' +
       '</div>' +
