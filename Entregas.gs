@@ -43,6 +43,7 @@ function ultimaEntregaPorPrenda_() {
  * Si no se pasa talle, se toma el de PERSONAL.
  */
 function registrarEntrega_(datos) {
+  asegurarColumnasEntregas_();
   var op = buscarOperario_(datos.legajo);
   if (!op) throw new Error('No existe el legajo ' + datos.legajo + ' en PERSONAL.');
 
@@ -54,6 +55,11 @@ function registrarEntrega_(datos) {
   if (!items.length) throw new Error('No se eligió ninguna prenda para entregar.');
 
   var nombre = op[P.NOMBRE];
+  var val = datos.validacion || {};
+  var valTipo = String(val.tipo || '').toUpperCase();     // FIRMA|PAPEL|AUSENTE|LOTE|''
+  var valUrl = val.firmaUrl || '';
+  var valMotivo = String(val.motivo || '').trim();
+  var validadoPor = datos.__validadoPor || '';
   var registradas = [];
   items.forEach(function (it) {
     var prenda = String(it.prenda || '').toUpperCase();
@@ -66,7 +72,11 @@ function registrarEntrega_(datos) {
       'PRENDA': prenda,
       'TALLE': talle || '',
       'MOTIVO': motivo,
-      'OBSERVACIONES': it.observaciones || datos.observaciones || ''
+      'OBSERVACIONES': it.observaciones || datos.observaciones || '',
+      'VALIDACION': valTipo,
+      'FIRMA_URL': valUrl,
+      'VALIDADO_POR': validadoPor,
+      'MOTIVO_VALIDACION': valMotivo
     });
     registradas.push(prenda);
   });
@@ -155,7 +165,7 @@ function entregadasDesde_(desde) {
  * Confirma una persona desde la lista de trabajo. Puede registrar entregas
  * (reinicia relojes), y/o anotar un motivo de NO-entrega para lo que quedó sin
  * dar. Cualquiera de las dos partes es opcional, pero al menos una debe venir.
- * datos = { legajo, fecha, motivo, items:[...], noEntrega?:{ prendas:[...], comentario } }
+ * datos = { legajo, fecha, motivo, items:[...], noEntrega?:{ prendas:[...], comentario }, validacion?:{...} }
  */
 function confirmarEntregas_(datos, usuario) {
   datos = datos || {};
@@ -165,6 +175,23 @@ function confirmarEntregas_(datos, usuario) {
   if (!hayItems && !hayNota) {
     throw new Error('Elegí al menos una prenda para entregar o escribí el motivo de no-entrega.');
   }
+
+  // Validación obligatoria SOLO cuando hay entrega de prendas (registrarEntrega_).
+  if (hayItems) {
+    var val = datos.validacion || {};
+    var tipo = String(val.tipo || '').toUpperCase();
+    if (tipo === 'FIRMA') {
+      if (!val.firmaBase64) throw new Error('Falta la firma del operario.');
+      val.firmaUrl = subirFirma_(val.firmaBase64, datos.legajo);
+    } else if (tipo === 'PAPEL' || tipo === 'AUSENTE') {
+      if (!String(val.motivo || '').trim()) throw new Error('Escribí el motivo de la excepción (papel / ausente).');
+    } else {
+      throw new Error('Falta la firma del operario o una excepción con motivo.');
+    }
+    datos.validacion = val;
+    datos.__validadoPor = usuario || '';
+  }
+
   var resultado = { ok: true };
   if (hayItems) resultado.entrega = registrarEntrega_(datos);
   if (hayNota) {
@@ -191,6 +218,10 @@ function confirmarEntregasVarias_(lista, usuario) {
       var noEnt = datos.noEntrega || null;
       var hayNota = noEnt && String(noEnt.comentario || '').trim();
       if (!hayItems && !hayNota) return; // nada que hacer para esta persona
+      if (hayItems) {
+        datos.validacion = { tipo: 'LOTE' };
+        datos.__validadoPor = usuario || '';
+      }
       if (hayItems) registrarEntrega_(datos);
       if (hayNota) {
         registrarNoEntrega_({
