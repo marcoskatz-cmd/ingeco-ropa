@@ -373,7 +373,11 @@ function historialOperario_(legajo) {
       prenda: f[E.PRENDA] || '',
       talle: f[E.TALLE] || '',
       motivo: f[E.MOTIVO] || '',
-      observaciones: f[E.OBS] || ''
+      observaciones: f[E.OBS] || '',
+      validacion: f[E.VALIDACION] || '',
+      firmaUrl: f[E.FIRMA_URL] || '',
+      validadoPor: f[E.VALIDADO_POR] || '',
+      motivoValidacion: f[E.MOTIVO_VAL] || ''
     };
   });
 
