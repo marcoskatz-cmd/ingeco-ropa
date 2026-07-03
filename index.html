@@ -346,6 +346,16 @@
   .right { text-align: right; }
   label.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; }
   label.inline select { width: auto; }
+
+  /* ---------- Firma de recepción ---------- */
+  .firma-wrap { margin: 6px 0 10px; }
+  .firma-canvas {
+    width: 100%; height: 180px; touch-action: none;
+    border: 1.5px dashed var(--borde, #b9c2cf); border-radius: 10px;
+    background: #fff; display: block; cursor: crosshair;
+  }
+  .firma-hint { font-size: 12px; margin: 4px 0 0; }
+  .firma-exc { margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -1020,8 +1030,87 @@
       toast('Elegí al menos una prenda, o escribí el motivo de por qué no se entrega.', 'err');
       return;
     }
+    // Si no se entrega ninguna prenda (solo motivo de no-entrega), no se pide firma.
+    if (!datos.items.length) { enviarEntrega_(card, datos); return; }
+    abrirModalFirma_(card, datos);
+  }
+
+  /** Estado del canvas de firma abierto (para leer si tiene trazos). */
+  var _firma = null;
+
+  function abrirModalFirma_(card, datos) {
+    var per = datos.items.map(function (it) { return it.prenda; }).join(', ');
+    var nombre = card.querySelector('b') ? card.querySelector('b').textContent : ('legajo ' + datos.legajo);
+    var html =
+      '<p class="muted" style="margin-top:0">Entrega a <b>' + esc(nombre) + '</b> · ' + esc(per) + '.<br>' +
+        'Que el operario firme abajo para confirmar que la recibió.</p>' +
+      '<div class="firma-wrap"><canvas id="firmaCanvas" class="firma-canvas"></canvas>' +
+        '<p class="firma-hint muted">Firmá con el dedo o el mouse. ' +
+          '<button type="button" id="firmaBorrar" class="btn-link">Borrar</button></p></div>' +
+      '<details class="firma-exc"><summary class="btn-link">El operario no puede firmar ahora</summary>' +
+        '<div class="grid2" style="margin-top:8px">' +
+          '<label class="campo"><span>Excepción</span><select id="firmaExcTipo">' +
+            '<option value="">— elegir —</option>' +
+            '<option value="PAPEL">Firma en papel</option>' +
+            '<option value="AUSENTE">Ausente</option></select></label>' +
+          '<label class="campo"><span>Motivo</span><input type="text" id="firmaExcMotivo" placeholder="Ej.: firmó la planilla en papel"></label>' +
+        '</div></details>' +
+      '<button id="firmaConfirmar" class="btn btn-primary btn-block" style="margin-top:12px">Confirmar entrega</button>';
+    abrirModal('Firma de recepción', html);
+    setTimeout(function () { initFirmaCanvas_(); }, 20);
+    $('firmaBorrar').addEventListener('click', function () { limpiarFirma_(); });
+    $('firmaConfirmar').addEventListener('click', function () { finalizarFirma_(card, datos); });
+  }
+
+  function initFirmaCanvas_() {
+    var c = $('firmaCanvas'); if (!c) return;
+    // Ajustar el tamaño real del canvas al tamaño en pantalla (nitidez).
+    var rect = c.getBoundingClientRect();
+    c.width = Math.max(1, Math.round(rect.width));
+    c.height = Math.max(1, Math.round(rect.height));
+    var ctx = c.getContext('2d');
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#12233a';
+    _firma = { canvas: c, ctx: ctx, dib: false, trazos: false };
+    function pos(e) {
+      var r = c.getBoundingClientRect();
+      var t = (e.touches && e.touches[0]) ? e.touches[0] : e;
+      return { x: t.clientX - r.left, y: t.clientY - r.top };
+    }
+    function down(e) { e.preventDefault(); _firma.dib = true; var p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+    function move(e) { if (!_firma.dib) return; e.preventDefault(); var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); _firma.trazos = true; }
+    function up() { _firma.dib = false; }
+    c.addEventListener('mousedown', down); c.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    c.addEventListener('touchstart', down, { passive: false });
+    c.addEventListener('touchmove', move, { passive: false });
+    c.addEventListener('touchend', up);
+  }
+
+  function limpiarFirma_() {
+    if (!_firma) return;
+    _firma.ctx.clearRect(0, 0, _firma.canvas.width, _firma.canvas.height);
+    _firma.trazos = false;
+  }
+
+  /** Lee el modal, arma datos.validacion y envía. Prioriza la excepción si está completa. */
+  function finalizarFirma_(card, datos) {
+    var excTipo = $('firmaExcTipo') ? $('firmaExcTipo').value : '';
+    var excMotivo = $('firmaExcMotivo') ? $('firmaExcMotivo').value.trim() : '';
+    if (excTipo) {
+      if (!excMotivo) { toast('Escribí el motivo de la excepción.', 'err'); return; }
+      datos.validacion = { tipo: excTipo, motivo: excMotivo };
+    } else {
+      if (!_firma || !_firma.trazos) { toast('El operario tiene que firmar, o elegí una excepción con motivo.', 'err'); return; }
+      datos.validacion = { tipo: 'FIRMA', firmaBase64: _firma.canvas.toDataURL('image/png') };
+    }
+    cerrarModal();
+    enviarEntrega_(card, datos);
+  }
+
+  /** Manda la entrega ya con validacion resuelta (o sin items, solo no-entrega). */
+  function enviarEntrega_(card, datos) {
     var btn = card.querySelector('.pConf');
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
     api('confirmarEntregas', { datos: datos }).then(function (r) {
       var msg = r.entrega
         ? ('Entrega registrada: ' + r.entrega.prendas.join(', ') + ' (' + r.entrega.fecha + ').' +
@@ -1029,7 +1118,7 @@
         : 'Motivo de no-entrega guardado.';
       toast(msg, 'ok');
       pintarPendientes(r.pendientes);
-    }).catch(function (e) { btn.disabled = false; manejar(e); });
+    }).catch(function (e) { if (btn) btn.disabled = false; manejar(e); });
   }
 
   /** Confirma en lote todas las tarjetas con la casilla de persona tildada. */
