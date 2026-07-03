@@ -220,6 +220,24 @@ function ensureNoEntregasSheet_() {
   return sh;
 }
 
+/**
+ * Agrega a la hoja ENTREGAS cualquier encabezado de COLS.ENTREGAS que falte,
+ * al final, sin tocar los datos existentes. Idempotente. Migración para las
+ * columnas de validación (firma). Se llama antes de escribir una entrega.
+ */
+function asegurarColumnasEntregas_() {
+  var sh = requireSheet_(SHEETS.ENTREGAS);
+  var headers = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+    .map(function (h) { return String(h || '').trim(); });
+  COLS.ENTREGAS.forEach(function (h) {
+    if (headers.indexOf(h) < 0) {
+      sh.getRange(1, sh.getLastColumn() + 1).setValue(h);
+      headers.push(h);
+    }
+  });
+  return sh;
+}
+
 /** Registra un motivo de no-entrega (una nota por persona y pasada). Append-only. */
 function registrarNoEntrega_(datos, usuario) {
   var op = buscarOperario_(datos.legajo);
