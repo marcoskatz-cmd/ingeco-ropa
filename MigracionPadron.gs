@@ -219,6 +219,38 @@ function previewReinicioPadron() {
   return c;
 }
 
+/**
+ * Agrega a LISTAS (columna CENTRO DE COSTO = D) los centros de la nómina que
+ * todavía no estén, para que la validación de datos de PERSONAL los acepte.
+ * Devuelve la lista de centros agregados. Idempotente (compara normalizado).
+ */
+function asegurarCentrosEnListas_() {
+  var sh = requireSheet_(SHEETS.LISTAS);
+  var COL = 4; // CENTRO DE COSTO
+  var alto = Math.max(sh.getMaxRows() - 1, 1);
+  var colVals = sh.getRange(2, COL, alto, 1).getValues();
+  var set = {};
+  var ultimaConDato = 1; // fila 1 = encabezado
+  for (var i = 0; i < colVals.length; i++) {
+    var v = String(colVals[i][0] || '').trim();
+    if (v) { set[normalizar_(v)] = true; ultimaConDato = i + 2; }
+  }
+  var faltan = [];
+  NOMINA_NUEVA.forEach(function (o) {
+    var c = String(o.centro || '').trim();
+    if (!c) return;
+    var k = normalizar_(c);
+    if (set[k]) return;
+    set[k] = true;
+    faltan.push(c);
+  });
+  if (faltan.length) {
+    sh.getRange(ultimaConDato + 1, COL, faltan.length, 1)
+      .setValues(faltan.map(function (c) { return [c]; }));
+  }
+  return faltan;
+}
+
 /** PASO 2: aplica. Hace backup, actualiza/crea desde la nomina y da de baja al resto. */
 function aplicarReinicioPadron() {
   var ss = getSpreadsheet_();
@@ -231,6 +263,13 @@ function aplicarReinicioPadron() {
   var nombreBackup = 'PERSONAL_BACKUP_' + stamp;
   hojaPersonal.copyTo(ss).setName(nombreBackup);
   Logger.log('Backup creado: ' + nombreBackup);
+
+  // 1.b) Los centros de la nómina deben existir en LISTAS o la validación de
+  // datos de la columna CENTRO DE COSTO rechaza la escritura. Se agregan los que
+  // falten (así también aparecen en el desplegable de la app).
+  var centrosAgregados = asegurarCentrosEnListas_();
+  Logger.log('Centros nuevos agregados a LISTAS: ' + centrosAgregados.length +
+    (centrosAgregados.length ? ' (' + centrosAgregados.join(', ') + ')' : ''));
 
   var nom = nominaPorLegajo_();
   var data = leerPersonal_();
