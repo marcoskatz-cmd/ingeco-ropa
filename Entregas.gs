@@ -183,10 +183,11 @@ function confirmarEntregas_(datos, usuario) {
     if (tipo === 'FIRMA') {
       if (!val.firmaBase64) throw new Error('Falta la firma del operario.');
       val.firmaUrl = subirFirma_(val.firmaBase64, datos.legajo);
-    } else if (tipo === 'PAPEL' || tipo === 'AUSENTE') {
-      if (!String(val.motivo || '').trim()) throw new Error('Escribí el motivo de la excepción (papel / ausente).');
+    } else if (tipo === 'PAPEL') {
+      if (!val.planillaBase64) throw new Error('Adjuntá la foto o el archivo de la planilla firmada.');
+      val.firmaUrl = subirPlanilla_(val.planillaBase64, datos.legajo);
     } else {
-      throw new Error('Falta la firma del operario o una excepción con motivo.');
+      throw new Error('Confirmá la entrega con la firma del operario o con la planilla.');
     }
     datos.validacion = val;
     datos.__validadoPor = usuario || '';
@@ -205,12 +206,16 @@ function confirmarEntregas_(datos, usuario) {
 }
 
 /**
- * Confirma varias personas de una (botón "Confirmar seleccionadas"). Procesa
- * cada entrega/nota y recalcula los pendientes UNA sola vez al final.
+ * Confirma varias personas de una (botón "Confirmar por planilla (varios)").
+ * Si viene `planillaBase64` (foto/archivo compartido de la planilla firmada por
+ * todos), se sube UNA sola vez y su URL se estampa en cada entrega con
+ * VALIDACION='PAPEL'. Sin foto, se usa VALIDACION='LOTE' (respaldo sin evidencia
+ * digital). Recalcula los pendientes UNA sola vez al final.
  * lista = [ { legajo, fecha, motivo, items:[...], noEntrega?:{...} }, ... ]
  */
-function confirmarEntregasVarias_(lista, usuario) {
+function confirmarEntregasVarias_(lista, usuario, planillaBase64) {
   lista = lista || [];
+  var urlPlanilla = planillaBase64 ? subirPlanilla_(planillaBase64, 'lote') : '';
   var confirmados = [], errores = [];
   lista.forEach(function (datos) {
     try {
@@ -219,7 +224,9 @@ function confirmarEntregasVarias_(lista, usuario) {
       var hayNota = noEnt && String(noEnt.comentario || '').trim();
       if (!hayItems && !hayNota) return; // nada que hacer para esta persona
       if (hayItems) {
-        datos.validacion = { tipo: 'LOTE' };
+        datos.validacion = urlPlanilla
+          ? { tipo: 'PAPEL', firmaUrl: urlPlanilla }
+          : { tipo: 'LOTE' };
         datos.__validadoPor = usuario || '';
       }
       if (hayItems) registrarEntrega_(datos);
@@ -299,6 +306,32 @@ function subirFirma_(base64, legajo) {
     ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '_' +
     ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2) + ('0' + d.getSeconds()).slice(-2);
   blob.setName('firma_' + claveLegajo_(legajo) + '_' + stamp + '.png');
+  var archivo = ensureCarpetaFirmas_().createFile(blob);
+  return archivo.getUrl();
+}
+
+/**
+ * Sube una planilla firmada (dataURL base64 de imagen JPG/PNG o PDF) a la
+ * carpeta de firmas y devuelve su URL. El tipo se detecta del prefijo del
+ * dataURL. Lanza error si el tipo no es soportado.
+ */
+function subirPlanilla_(dataUrl, legajo) {
+  var s = String(dataUrl || '');
+  var m = s.match(/^data:([^;]+);base64,(.*)$/);
+  if (!m) throw new Error('La planilla vino vacía o en formato inválido.');
+  var mime = m[1], b64 = m[2];
+  var ext = mime === 'image/png' ? 'png'
+    : (mime === 'image/jpeg' ? 'jpg'
+    : (mime === 'application/pdf' ? 'pdf' : ''));
+  if (!ext) throw new Error('Tipo de planilla no soportado: ' + mime);
+  if (!b64) throw new Error('La planilla vino vacía.');
+  var bytes = Utilities.base64Decode(b64);
+  var blob = Utilities.newBlob(bytes, mime);
+  var d = new Date();
+  var stamp = d.getFullYear() +
+    ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '_' +
+    ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2) + ('0' + d.getSeconds()).slice(-2);
+  blob.setName('planilla_' + (claveLegajo_(legajo) || 'LOTE') + '_' + stamp + '.' + ext);
   var archivo = ensureCarpetaFirmas_().createFile(blob);
   return archivo.getUrl();
 }
