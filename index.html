@@ -355,7 +355,8 @@
     background: #fff; display: block; cursor: crosshair;
   }
   .firma-hint { font-size: 12px; margin: 4px 0 0; }
-  .firma-exc { margin-top: 10px; }
+  #panelPapel input[type="file"] { width: 100%; font-size: 13px; }
+  #panelPapel .campo { margin-top: 0; }
 </style>
 </head>
 <body>
@@ -968,7 +969,7 @@
     cont.innerHTML =
       '<div class="fila-botones bulk-bar">' +
         '<label class="inline"><input type="checkbox" id="ePendAll"> Seleccionar todo</label>' +
-        '<button id="ePendConfSel" class="btn btn-primary btn-sm">Confirmar seleccionadas</button>' +
+        '<button id="ePendConfSel" class="btn btn-primary btn-sm">Confirmar por planilla (varios)</button>' +
       '</div>' +
       '<div class="cards-grid">' + cards + '</div>';
 
@@ -1037,29 +1038,70 @@
 
   /** Estado del canvas de firma abierto (para leer si tiene trazos). */
   var _firma = null;
+  /** Archivo de planilla ya preparado ({dataUrl, nombre}) o null. */
+  var _planilla = null;
 
   function abrirModalFirma_(card, datos) {
+    _planilla = null;
     var per = datos.items.map(function (it) { return it.prenda; }).join(', ');
     var nombre = card.querySelector('b') ? card.querySelector('b').textContent : ('legajo ' + datos.legajo);
     var html =
-      '<p class="muted" style="margin-top:0">Entrega a <b>' + esc(nombre) + '</b> · ' + esc(per) + '.<br>' +
-        'Que el operario firme abajo para confirmar que la recibió.</p>' +
-      '<div class="firma-wrap"><canvas id="firmaCanvas" class="firma-canvas"></canvas>' +
-        '<p class="firma-hint muted">Firmá con el dedo o el mouse. ' +
-          '<button type="button" id="firmaBorrar" class="btn-link">Borrar</button></p></div>' +
-      '<details class="firma-exc"><summary class="btn-link">El operario no puede firmar ahora</summary>' +
-        '<div class="grid2" style="margin-top:8px">' +
-          '<label class="campo"><span>Excepción</span><select id="firmaExcTipo">' +
-            '<option value="">— elegir —</option>' +
-            '<option value="PAPEL">Firma en papel</option>' +
-            '<option value="AUSENTE">Ausente</option></select></label>' +
-          '<label class="campo"><span>Motivo</span><input type="text" id="firmaExcMotivo" placeholder="Ej.: firmó la planilla en papel"></label>' +
-        '</div></details>' +
+      '<p class="muted" style="margin-top:0">Entrega a <b>' + esc(nombre) + '</b> · ' + esc(per) + '.</p>' +
+      '<div class="seg" role="tablist">' +
+        '<button type="button" class="seg-btn activo" id="metFirma">✍️ Firma en el momento</button>' +
+        '<button type="button" class="seg-btn" id="metPapel">📄 Por planilla</button>' +
+      '</div>' +
+      '<div id="panelFirma">' +
+        '<p class="muted" style="margin:0 0 4px">Que el operario firme abajo para confirmar que la recibió.</p>' +
+        '<div class="firma-wrap"><canvas id="firmaCanvas" class="firma-canvas"></canvas>' +
+          '<p class="firma-hint muted">Firmá con el dedo o el mouse. ' +
+            '<button type="button" id="firmaBorrar" class="btn-link">Borrar</button></p></div>' +
+      '</div>' +
+      '<div id="panelPapel" class="oculto">' +
+        '<p class="muted" style="margin:0 0 6px">Subí una foto o el archivo de la planilla firmada en papel.</p>' +
+        '<label class="campo"><span>Planilla firmada (foto o PDF)</span>' +
+          '<input type="file" id="planillaFile" accept="image/*,application/pdf" capture="environment"></label>' +
+        '<p id="planillaPreview" class="muted" style="margin:6px 0 0"></p>' +
+        '<label class="campo" style="margin-top:8px"><span>Observación (opcional)</span>' +
+          '<input type="text" id="planillaObs" placeholder="Ej.: planilla del centro tal, del día X"></label>' +
+      '</div>' +
       '<button id="firmaConfirmar" class="btn btn-primary btn-block" style="margin-top:12px">Confirmar entrega</button>';
-    abrirModal('Firma de recepción', html);
+    abrirModal('Confirmar entrega', html);
     setTimeout(function () { initFirmaCanvas_(); }, 20);
     $('firmaBorrar').addEventListener('click', function () { limpiarFirma_(); });
+    $('metFirma').addEventListener('click', function () { seleccionarMetodoEntrega_('FIRMA'); });
+    $('metPapel').addEventListener('click', function () { seleccionarMetodoEntrega_('PAPEL'); });
+    $('planillaFile').addEventListener('change', function () { onPlanillaElegida_(this.files && this.files[0]); });
     $('firmaConfirmar').addEventListener('click', function () { finalizarFirma_(card, datos); });
+  }
+
+  /** Cambia el panel visible según el método (FIRMA / PAPEL). */
+  function seleccionarMetodoEntrega_(metodo) {
+    var esFirma = metodo === 'FIRMA';
+    $('metFirma').classList.toggle('activo', esFirma);
+    $('metPapel').classList.toggle('activo', !esFirma);
+    $('panelFirma').classList.toggle('oculto', !esFirma);
+    $('panelPapel').classList.toggle('oculto', esFirma);
+  }
+
+  /** Método de entrega activo en el modal ('FIRMA' | 'PAPEL'). */
+  function metodoEntregaActivo_() {
+    return $('metPapel') && $('metPapel').classList.contains('activo') ? 'PAPEL' : 'FIRMA';
+  }
+
+  /** Procesa el archivo elegido y actualiza el preview / estado _planilla. */
+  function onPlanillaElegida_(file) {
+    var prev = $('planillaPreview');
+    if (!file) { _planilla = null; if (prev) prev.textContent = ''; return; }
+    if (prev) prev.textContent = 'Procesando…';
+    prepararArchivoPlanilla_(file).then(function (r) {
+      _planilla = r;
+      if (prev) prev.textContent = '✔️ ' + r.nombre;
+    }).catch(function (e) {
+      _planilla = null;
+      if (prev) prev.textContent = '';
+      toast(e.message, 'err');
+    });
   }
 
   function initFirmaCanvas_() {
@@ -1092,15 +1134,56 @@
     _firma.trazos = false;
   }
 
-  /** Lee el modal, arma datos.validacion y envía. Prioriza la excepción si está completa. */
+  /**
+   * Lee un archivo de planilla (imagen o PDF) y devuelve {dataUrl, nombre}.
+   * Las imágenes se redimensionan a máx 1600px y se exportan JPEG (subida más
+   * liviana desde el celular). Los PDF se devuelven tal cual, con tope 10 MB.
+   */
+  function prepararArchivoPlanilla_(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file) { reject(new Error('No se eligió archivo.')); return; }
+      var tipo = file.type || '';
+      var esImagen = tipo.indexOf('image/') === 0;
+      var esPdf = tipo === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+      if (!esImagen && !esPdf) { reject(new Error('Subí una foto (JPG/PNG) o un PDF.')); return; }
+      if (esPdf) {
+        if (file.size > 10 * 1024 * 1024) { reject(new Error('El PDF supera 10 MB. Reducilo e intentá de nuevo.')); return; }
+        var frp = new FileReader();
+        frp.onload = function () { resolve({ dataUrl: String(frp.result), nombre: file.name }); };
+        frp.onerror = function () { reject(new Error('No se pudo leer el archivo.')); };
+        frp.readAsDataURL(file);
+        return;
+      }
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var max = 1600, w = img.width, h = img.height;
+          if (w > max || h > max) {
+            if (w >= h) { h = Math.round(h * max / w); w = max; }
+            else { w = Math.round(w * max / h); h = max; }
+          }
+          var cv = document.createElement('canvas');
+          cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve({ dataUrl: cv.toDataURL('image/jpeg', 0.8), nombre: file.name });
+        };
+        img.onerror = function () { reject(new Error('No se pudo procesar la imagen.')); };
+        img.src = String(fr.result);
+      };
+      fr.onerror = function () { reject(new Error('No se pudo leer el archivo.')); };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  /** Lee el método activo del modal, arma datos.validacion y envía. */
   function finalizarFirma_(card, datos) {
-    var excTipo = $('firmaExcTipo') ? $('firmaExcTipo').value : '';
-    var excMotivo = $('firmaExcMotivo') ? $('firmaExcMotivo').value.trim() : '';
-    if (excTipo) {
-      if (!excMotivo) { toast('Escribí el motivo de la excepción.', 'err'); return; }
-      datos.validacion = { tipo: excTipo, motivo: excMotivo };
+    if (metodoEntregaActivo_() === 'PAPEL') {
+      if (!_planilla || !_planilla.dataUrl) { toast('Adjuntá la foto o el archivo de la planilla firmada.', 'err'); return; }
+      var obs = $('planillaObs') ? $('planillaObs').value.trim() : '';
+      datos.validacion = { tipo: 'PAPEL', planillaBase64: _planilla.dataUrl, motivo: obs };
     } else {
-      if (!_firma || !_firma.trazos) { toast('El operario tiene que firmar, o elegí una excepción con motivo.', 'err'); return; }
+      if (!_firma || !_firma.trazos) { toast('El operario tiene que firmar, o cambiá a "Por planilla".', 'err'); return; }
       datos.validacion = { tipo: 'FIRMA', firmaBase64: _firma.canvas.toDataURL('image/png') };
     }
     var fb = $('firmaConfirmar'); if (fb) fb.disabled = true;
@@ -1122,7 +1205,7 @@
     }).catch(function (e) { if (btn) btn.disabled = false; manejar(e); });
   }
 
-  /** Confirma en lote todas las tarjetas con la casilla de persona tildada. */
+  /** Abre el mini-modal de confirmación por planilla para las personas tildadas. */
   function confirmarSeleccionadas_() {
     var cont = $('pendCards'); if (!cont) return;
     var seleccionadas = Array.prototype.slice.call(cont.querySelectorAll('.pend-card'))
@@ -1131,13 +1214,32 @@
     var lista = [];
     seleccionadas.forEach(function (card) { var d = recolectarEntrega_(card); if (d) lista.push(d); });
     if (!lista.length) { toast('Las personas seleccionadas no tienen prendas tildadas ni motivo.', 'err'); return; }
-    if (!window.confirm('¿Confirmar la entrega de ' + lista.length + ' persona(s) con fecha y prendas tildadas?')) return;
-    var btn = $('ePendConfSel'); if (btn) btn.disabled = true;
-    api('confirmarEntregasVarias', { lista: lista }).then(function (r) {
+
+    _planilla = null;
+    var html =
+      '<p class="muted" style="margin-top:0">Vas a confirmar la entrega de <b>' + lista.length + '</b> persona(s) ' +
+        'por <b>planilla en papel</b>, con la fecha y las prendas tildadas.</p>' +
+      '<label class="campo"><span>Foto de la planilla firmada por todos (opcional)</span>' +
+        '<input type="file" id="loteFile" accept="image/*,application/pdf" capture="environment"></label>' +
+      '<p id="planillaPreview" class="muted" style="margin:6px 0 0"></p>' +
+      '<button id="loteConfirmar" class="btn btn-primary btn-block" style="margin-top:12px">Confirmar entregas</button>';
+    abrirModal('Confirmar por planilla (varios)', html);
+    $('loteFile').addEventListener('change', function () { onPlanillaElegida_(this.files && this.files[0]); });
+    $('loteConfirmar').addEventListener('click', function () { enviarLotePlanilla_(lista); });
+  }
+
+  /** Envía el lote con la foto compartida (si se adjuntó). */
+  function enviarLotePlanilla_(lista) {
+    var payload = { lista: lista };
+    if (_planilla && _planilla.dataUrl) payload.planillaBase64 = _planilla.dataUrl;
+    var btn = $('loteConfirmar'); if (btn) btn.disabled = true;
+    cerrarModal();
+    var barBtn = $('ePendConfSel'); if (barBtn) barBtn.disabled = true;
+    api('confirmarEntregasVarias', payload).then(function (r) {
       var okN = (r.confirmados || []).length, errN = (r.errores || []).length;
       toast('Entregas confirmadas: ' + okN + (errN ? ' · ' + errN + ' con error' : '') + '.', errN ? 'err' : 'ok');
       pintarPendientes(r.pendientes);
-    }).catch(function (e) { if (btn) btn.disabled = false; manejar(e); });
+    }).catch(function (e) { if (barBtn) barBtn.disabled = false; manejar(e); });
   }
 
   function pintarEntregaSuelta() {
