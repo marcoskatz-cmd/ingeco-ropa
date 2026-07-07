@@ -251,6 +251,30 @@ function asegurarCentrosEnListas_() {
   return faltan;
 }
 
+/** VERIFICACION (solo lectura): confirma filas, activos, duplicados y cobertura de la nomina. */
+function verificarPadron() {
+  var data = leerPersonal_();
+  var activos = 0, cont = {}, dups = [];
+  data.filas.forEach(function (f) {
+    if (esSi_(f[P.ACTIVO])) activos++;
+    var k = claveLegajo_(f[P.LEGAJO]);
+    cont[k] = (cont[k] || 0) + 1;
+    if (cont[k] === 2) dups.push(k);
+  });
+  var enNominaActivos = 0, faltan = [];
+  NOMINA_NUEVA.forEach(function (o) {
+    var hit = data.porLegajo[claveLegajo_(o.legajo)];
+    if (hit && esSi_(hit.obj[P.ACTIVO])) enNominaActivos++;
+    else faltan.push(o.legajo + ' ' + o.nombre);
+  });
+  Logger.log('=== VERIFICACION PADRON ===');
+  Logger.log('Filas totales: ' + data.filas.length + ' | Activos: ' + activos);
+  Logger.log('Legajos DUPLICADOS: ' + dups.length + (dups.length ? ' (' + dups.join(', ') + ')' : ''));
+  Logger.log('De la nomina, ACTIVOS: ' + enNominaActivos + ' / ' + NOMINA_NUEVA.length);
+  if (faltan.length) Logger.log('NOMINA no-activos/ausentes: ' + faltan.join(' | '));
+  return { filas: data.filas.length, activos: activos, dups: dups, enNominaActivos: enNominaActivos };
+}
+
 /** PASO 2: aplica. Hace backup, actualiza/crea desde la nomina y da de baja al resto. */
 function aplicarReinicioPadron() {
   var ss = getSpreadsheet_();
