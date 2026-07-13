@@ -281,8 +281,13 @@
   .pchip[role="button"]:hover { border-color: var(--cobalto); }
   .pchip.sel { background: var(--cobalto); color: #fff; border-color: var(--cobalto); font-weight: bold; }
   .pchip-sintalle { background: var(--amarillo-bg); opacity: .8; }
-  .sel-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 4px 0 10px; }
-  .sel-bar select { width: auto; }
+  .sel-bar { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 10px; }
+  .centro-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .cchip { border: 1px solid var(--borde); background: #fff; color: var(--cobalto); border-radius: 999px;
+    padding: 3px 11px; font-size: 12px; cursor: pointer; }
+  .cchip:hover { border-color: var(--cobalto); }
+  .cchip.on { background: var(--cobalto); color: #fff; border-color: var(--cobalto); font-weight: bold; }
+  .sel-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .mini { font-size: 12px; }
 
   /* Personal inactivo: sección minimizada */
@@ -502,7 +507,7 @@
 
   /* ===================== Filtros (buscador + prenda) ===================== */
   var FILTROS = {
-    comprar:   { q: '', prenda: '', centro: '', orden: 'nombre' },
+    comprar:   { q: '', prenda: '', centros: [], orden: 'nombre' },
     entrega:   { q: '', prenda: '', orden: 'nombre' },
     roturas:   { q: '', prenda: '' },
     personal:  { q: '' },
@@ -1405,35 +1410,47 @@
   /** Clave de selección de una fila de compra. */
   function claveComprar_(r) { return String(r.legajo).toUpperCase().replace(/\s+/g, '') + '|' + r.prenda; }
 
-  /** Filas de compra que pasan buscador + prenda + centro. */
+  /** Filas de compra que pasan buscador + prenda + centros (varios). */
   function listaFiltradaComprar() {
     var f = FILTROS.comprar;
+    var cs = f.centros || [];
     return comprarFilas.filter(function (r) {
       if (f.prenda && String(r.prenda) !== f.prenda) return false;
-      if (f.centro && String(r.centro) !== f.centro) return false;
+      if (cs.length && cs.indexOf(r.centro) < 0) return false;
       return coincideBusqueda(f.q, [r.legajo, r.nombre, r.centro]);
     });
   }
 
-  /** Barra de selección: filtro por centro + selección masiva + contador. */
+  /** Barra de selección: filtro por centros (chips) + selección masiva + contador. */
   function selBarHtml() {
     var centros = {};
     comprarFilas.forEach(function (r) { if (r.centro) centros[r.centro] = true; });
-    var opts = ['<option value="">Todos los centros</option>'].concat(
+    var sel = FILTROS.comprar.centros || [];
+    var chips = '<button type="button" class="cchip' + (sel.length ? '' : ' on') + '" data-centro="">Todos</button>' +
       Object.keys(centros).sort(cmpTextoEs_).map(function (c) {
-        return '<option value="' + esc(c) + '"' + (FILTROS.comprar.centro === c ? ' selected' : '') + '>' + esc(c) + '</option>';
-      })).join('');
+        return '<button type="button" class="cchip' + (sel.indexOf(c) >= 0 ? ' on' : '') + '" data-centro="' + esc(c) + '">' + esc(c) + '</button>';
+      }).join('');
     return '<div class="sel-bar">' +
-      '<label class="inline">Centro <select id="cCentro">' + opts + '</select></label>' +
-      '<button id="cSelVis" class="btn btn-primary btn-sm">Seleccionar todo lo visible</button>' +
-      '<button id="cSelClear" class="btn btn-ghost btn-sm">Limpiar selección</button>' +
-      '<span id="cSelCount" class="muted"></span>' +
+      '<div class="centro-chips"><span class="muted mini">Centro:</span> ' + chips + '</div>' +
+      '<div class="sel-acciones">' +
+        '<button id="cSelVis" class="btn btn-primary btn-sm">Seleccionar todo lo visible</button>' +
+        '<button id="cSelClear" class="btn btn-ghost btn-sm">Limpiar selección</button>' +
+        '<span id="cSelCount" class="muted"></span>' +
+      '</div>' +
     '</div>';
   }
 
   function wireSelBar() {
-    var sc = $('cCentro');
-    if (sc) sc.addEventListener('change', function () { FILTROS.comprar.centro = sc.value; renderComprarTabla(); });
+    Array.prototype.forEach.call($('comprarSelBar').querySelectorAll('.cchip'), function (chip) {
+      chip.addEventListener('click', function () {
+        var c = chip.getAttribute('data-centro');
+        var arr = FILTROS.comprar.centros || (FILTROS.comprar.centros = []);
+        if (!c) { FILTROS.comprar.centros = []; }            // "Todos" limpia el filtro
+        else { var i = arr.indexOf(c); if (i >= 0) arr.splice(i, 1); else arr.push(c); }
+        $('comprarSelBar').innerHTML = selBarHtml(); wireSelBar();
+        renderComprarTabla();
+      });
+    });
     var sv = $('cSelVis');
     if (sv) sv.addEventListener('click', function () {
       listaFiltradaComprar().forEach(function (r) { if (!r.faltaTalle) S.seleccion[claveComprar_(r)] = true; });
