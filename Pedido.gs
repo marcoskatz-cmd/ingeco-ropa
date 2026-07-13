@@ -4,13 +4,13 @@
  * excluyendo las que el usuario marcó como "no entregar" y las SIN DATO sin
  * talle. Suma totales y valoriza contra PROVEEDORES.
  *
- * exclusiones: lista de claves "LEGAJO|PRENDA" a dejar afuera (lo que el
- * usuario marcó como no entregado en la pantalla de la corrida).
+ * seleccion: lista de claves "LEGAJO|PRENDA" a INCLUIR (lo que el usuario
+ * eligió comprar en la pantalla de la corrida). Nada se compra por defecto.
  */
-function armarPedido_(exclusiones, horizonte) {
+function armarPedido_(seleccion, horizonte) {
   var esPrev = (horizonte === 'prevision');
   var vista = esPrev ? generarPrevision_() : calcularCorrida_();
-  var ped = armarDesdeFilas_(vista.filas, exclusiones);
+  var ped = armarDesdeFilas_(vista.filas, seleccion);
   ped.horizonte = esPrev ? 'prevision' : 'ahora';
   ped.fechaCorrida = vista.fechaCorrida || vista.fechaObjetivo;
   ped.fechaObjetivo = vista.fechaObjetivo;
@@ -24,16 +24,9 @@ function armarPedido_(exclusiones, horizonte) {
  * proveedores) sobre esas mismas filas, así evaluarPadron_ corre una sola vez.
  *  horizonte: 'ahora' (default) | 'prevision'.
  */
-function vistaComprar_(horizonte, exclusiones) {
+function vistaComprar_(horizonte, seleccion) {
   var esPrev = (horizonte === 'prevision');
   var vista = esPrev ? generarPrevision_() : calcularCorrida_();
-
-  // Adjunta a cada fila el motivo guardado de "no compra" (si lo hay).
-  var notas = notasNoCompraPorClave_();
-  vista.filas.forEach(function (f) {
-    var n = notas[claveLegajo_(f.legajo) + '|' + String(f.prenda).toUpperCase()];
-    f.motivoNoCompra = n ? n.comentario : '';
-  });
 
   return {
     horizonte: esPrev ? 'prevision' : 'ahora',
@@ -43,7 +36,7 @@ function vistaComprar_(horizonte, exclusiones) {
     dias: vista.dias || getDiasPrevision_(),
     filas: vista.filas,
     resumen: vista.resumen,
-    pedido: armarDesdeFilas_(vista.filas, exclusiones)
+    pedido: armarDesdeFilas_(vista.filas, seleccion)
   };
 }
 
@@ -98,18 +91,19 @@ function notasNoCompraPorClave_() {
 }
 
 /**
- * Núcleo del armado: a partir de filas ya evaluadas separa incluidas /
- * excluidas / sin talle y construye matrices y valorización. No recalcula el
- * padrón: trabaja sobre las filas que recibe.
+ * Núcleo del armado: a partir de filas ya evaluadas separa incluidas (las
+ * SELECCIONADAS con talle) / sin talle (seleccionadas sin talle) / no
+ * seleccionadas, y construye las matrices. No recalcula el padrón: trabaja sobre
+ * las filas que recibe. `seleccion` = claves "LEGAJO|PRENDA" a incluir.
  */
-function armarDesdeFilas_(filas, exclusiones) {
-  var excl = {};
-  (exclusiones || []).forEach(function (k) { excl[String(k).toUpperCase()] = true; });
+function armarDesdeFilas_(filas, seleccion) {
+  var sel = {};
+  (seleccion || []).forEach(function (k) { sel[String(k).toUpperCase()] = true; });
 
-  var incluidas = [], excluidas = [], sinTalle = [];
+  var incluidas = [], noSeleccionadas = [], sinTalle = [];
   (filas || []).forEach(function (f) {
     var clave = claveLegajo_(f.legajo) + '|' + f.prenda;
-    if (excl[clave]) { excluidas.push(f); return; }
+    if (!sel[clave]) { noSeleccionadas.push(f); return; }
     if (f.faltaTalle) { sinTalle.push(f); return; }
     incluidas.push(f);
   });
@@ -127,9 +121,8 @@ function armarDesdeFilas_(filas, exclusiones) {
     matrices: matrices,
     totales: totales,
     incluidas: incluidas,
-    excluidas: excluidas,
-    sinTalle: sinTalle,
-    proveedores: valorizarPedido_(totales)
+    excluidas: noSeleccionadas,
+    sinTalle: sinTalle
   };
 }
 

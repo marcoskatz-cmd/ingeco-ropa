@@ -269,29 +269,6 @@
   tr.row-critico td { background: rgba(192,57,43,.05); }
   tr.excluida td { opacity: .45; text-decoration: line-through; }
 
-  /* Comprar agrupado por persona */
-  .persona-head { font-size: 14px; margin-bottom: 6px; }
-  .persona-card.tiene-critico { border-color: var(--rojo); }
-  .prenda-row { padding: 8px 0; border-top: 1px solid #eef0f5; }
-  .persona-head + .prenda-row { border-top: none; }
-  .prenda-top { display: flex; align-items: flex-start; gap: 10px; }
-  .prenda-info { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.5; }
-  .prenda-info .badge { margin-top: 2px; }
-  .prenda-row.excluida .prenda-info { opacity: .5; text-decoration: line-through; }
-  .no-comprar { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
-    font-size: 11px; text-transform: uppercase; letter-spacing: .3px; color: var(--gris);
-    cursor: pointer; white-space: nowrap; user-select: none; }
-  .no-comprar input { margin: 0; }
-  .prenda-row.excluida .no-comprar { color: var(--rojo); font-weight: bold; }
-
-  /* Motivo de no-compra: aparece al marcar "no comprar" */
-  .mnc-wrap { margin-top: 6px; }
-  .mnc-input { display: none; width: 100%; padding: 6px 9px; font-size: 13px; }
-  .prenda-row.excluida .mnc-input { display: block; }
-  .mnc-saved { display: block; color: var(--gris); font-size: 12px; margin-top: 4px; }
-  .mnc-saved:empty { display: none; }
-  .prenda-row.excluida .mnc-saved { display: none; }
-
   /* Comprar — listado por persona (chips) */
   .persona-lista { display: flex; flex-direction: column; gap: 6px; }
   .persona-linea { padding: 8px 10px; border: 1px solid var(--borde); border-radius: 9px; background: #fff; }
@@ -302,13 +279,10 @@
     padding: 4px 9px; border: 1px solid var(--borde); border-radius: 999px; background: var(--cobalto-claro); }
   .pchip[role="button"] { cursor: pointer; user-select: none; }
   .pchip[role="button"]:hover { border-color: var(--cobalto); }
-  .pchip.excluida { opacity: .55; text-decoration: line-through; border-style: dashed; border-color: var(--rojo); }
-  .pchip-sintalle { background: var(--amarillo-bg); }
-  .pl-motivos { margin-top: 8px; }
-  .pl-motivos:empty { display: none; }
-  .pl-motivos .mnc-wrap { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; }
-  .pl-motivos .mnc-lbl { flex: 0 0 auto; font-size: 12px; }
-  .pl-motivos .mnc-input { display: block; flex: 1 1 auto; width: auto; padding: 6px 9px; font-size: 13px; }
+  .pchip.sel { background: var(--cobalto); color: #fff; border-color: var(--cobalto); font-weight: bold; }
+  .pchip-sintalle { background: var(--amarillo-bg); opacity: .8; }
+  .sel-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 4px 0 10px; }
+  .sel-bar select { width: auto; }
   .mini { font-size: 12px; }
 
   /* Personal inactivo: sección minimizada */
@@ -328,7 +302,6 @@
   .error { color: var(--rojo); font-size: 13px; margin-top: 10px; }
   .vacio { color: var(--gris); text-align: center; padding: 26px; font-style: italic; }
   .cargando { color: var(--gris); text-align: center; padding: 40px; }
-  .pill-ganador { background: var(--verde); color: #fff; padding: 3px 10px; border-radius: 20px; font-weight: bold; }
 
   /* ---------- Toast ---------- */
   .toast {
@@ -431,7 +404,7 @@
     listas: {},
     seccion: 'tablero',
     horizonteComprar: 'ahora', // 'ahora' | 'prevision' — toggle de la pantalla Comprar
-    exclusiones: {},  // { "LEGAJO|PRENDA": true } marcado como "no comprar"
+    seleccion: {},  // { "LEGAJO|PRENDA": true } elegido para comprar (modelo por inclusión)
     personalTab: 'padron',       // 'padron' | 'cruce' — sub-pestaña de Personal
     personalSoloSinTalle: false, // one-shot: entrar a Personal ya filtrando "sin talle" (desde el tablero)
     personalOrden: 'APELLIDO Y NOMBRE', // criterio de orden de la lista de Personal
@@ -529,7 +502,7 @@
 
   /* ===================== Filtros (buscador + prenda) ===================== */
   var FILTROS = {
-    comprar:   { q: '', prenda: '', orden: 'nombre' },
+    comprar:   { q: '', prenda: '', centro: '', orden: 'nombre' },
     entrega:   { q: '', prenda: '', orden: 'nombre' },
     roturas:   { q: '', prenda: '' },
     personal:  { q: '' },
@@ -794,11 +767,11 @@
 
       seccionAyuda('🛒 Comprar',
         'Acá ves la corrida (quién necesita qué) y armás el pedido, todo en una pantalla.',
-        ['Arriba elegís el horizonte: <b>Ahora</b> (lo que corresponde hoy) o <b>+' + esc(dias) + ' días</b> (previsión, solo para mirar; ahí no se compra ni se congela).',
-         'En <b>“Quiénes y qué”</b> cada operario es una tarjeta con sus prendas (talle, estado, meses de uso). Las tarjetas con algo crítico van resaltadas.',
-         'Tildá <b>“No comprar”</b> en lo que no quieras incluir en esta compra. Al tildarla aparece una casilla para anotar <b>por qué no se compra</b> (se guarda solo; queda como registro y se ve también en Personal → Entregas).',
+        ['Arriba elegís el horizonte: <b>Ahora</b> (lo que corresponde hoy) o <b>+' + esc(dias) + ' días</b> (previsión, para comprar por anticipado). En los dos podés congelar.',
+         'En <b>“Quiénes y qué”</b> cada operario es un renglón con sus prendas como <b>chips</b> (talle, estado). <b>Nada está preseleccionado</b>: elegís qué comprar.',
+         'Para elegir: <b>tildá la persona</b> (selecciona todas sus prendas) o <b>tocá cada chip</b> de prenda. Con el <b>filtro por Centro</b> + <b>“Seleccionar todo lo visible”</b> armás rápido, por ejemplo, “solo Taller”.',
          'Lo que dice <b>“falta”</b> en talle no se puede pedir hasta cargarlo en Personal.',
-         'Abajo se arma el <b>Pedido</b>: las matrices de cantidades por talle y grupo, y la <b>comparación de proveedores</b> (marca el ganador).',
+         'Abajo se arma el <b>Pedido</b>: las matrices de cantidades por talle y grupo de lo seleccionado. La compra al proveedor se maneja por fuera del sistema.',
          'El botón verde <b>“Congelar esta compra”</b> la guarda en el Historial y arma la lista de entrega. ' +
            '<b>Congelar no entrega ni reinicia relojes</b>: solo deja la constancia de qué compraste.']) +
 
@@ -819,7 +792,7 @@
          'Pestaña <b>“Cruce con RRHH”</b>: pegás el listado oficial (legajo, nombre, categoría) y el sistema compara por legajo y sugiere altas y bajas. Vos confirmás una por una.']) +
 
       seccionAyuda('🧾 Historial',
-        'Todas las compras congeladas, una fila por corrida cerrada. Tocá una fila para ver el detalle (matrices y proveedor ganador).',
+        'Todas las compras congeladas, una fila por corrida cerrada. Tocá una fila para ver el detalle (matrices).',
         []) +
 
       seccionAyuda('🧰 Roturas',
@@ -831,7 +804,6 @@
         'Todo se edita desde acá, sin tocar la planilla.',
         ['<b>PIN de acceso</b>: cambiar los 4 dígitos con los que todos entran.',
          '<b>Parámetros de cálculo</b>: vida útil, cadencia, días de previsión y fecha ancla.',
-         '<b>Proveedores y precios</b>: hasta 5 proveedores, un precio por prenda.',
          '<b>Listas</b>: las opciones de los selectores de Personal (colores, tipos de botín, categorías, centros, talles).']) +
 
       // ---- Glosario ----
@@ -1374,7 +1346,7 @@
     clearTimeout(comprarT);   // cancela un refresco de pedido pendiente
     comprarSeq++;             // invalida cualquier refresco en vuelo
     $('comprarBody').innerHTML = cargando();
-    api('vistaComprar', { horizonte: S.horizonteComprar, exclusiones: Object.keys(S.exclusiones) })
+    api('vistaComprar', { horizonte: S.horizonteComprar, seleccion: Object.keys(S.seleccion) })
       .then(pintarComprar).catch(manejar);
   }
 
@@ -1386,12 +1358,8 @@
       ? ('Corrida ' + esc(v.fechaCorrida || '') + ' — lo que corresponde comprar ahora.')
       : ('Previsión a ' + (v.dias || 30) + ' días (' + esc(v.fechaObjetivo || '') + ') — para anticipar el fondo.');
     var aviso = esAhora
-      ? 'Tocá una prenda para marcarla “No comprar”. Lo que falta talle no se puede pedir hasta cargarlo en Personal.'
-      : 'Previsión a ' + (v.dias || 30) + ' días: tocá una prenda para excluirla y congelá para comprar por anticipado. Lo que falta talle no se puede pedir.';
-    var nExcl = Object.keys(S.exclusiones).length;
-    var limpiar = nExcl
-      ? '<div class="fila-botones"><button id="cLimpiar" class="btn btn-ghost">Limpiar exclusiones (' + nExcl + ')</button></div>'
-      : '';
+      ? 'Elegí qué comprar: tildá la persona o tocá cada prenda. Nada está preseleccionado. Lo que falta talle no se puede pedir hasta cargarlo en Personal.'
+      : 'Previsión a ' + (v.dias || 30) + ' días: elegí las prendas a comprar por anticipado y congelá. Lo que falta talle no se puede pedir.';
 
     comprarFilas = v.filas || [];
     comprarEditable = true;
@@ -1403,16 +1371,16 @@
         '<div class="card-tit">Quiénes y qué</div>' +
         '<p class="muted">' + aviso + '</p>' +
         '<div id="comprarFiltros"></div>' +
-        '<div id="comprarTabla"></div>' + limpiar +
+        '<div id="comprarSelBar"></div>' +
+        '<div id="comprarTabla"></div>' +
       '</div>' +
       '<div id="pedidoPane" class="pedido-pane">' + pedidoPaneHtml(v.pedido, v.horizonte) + '</div>';
 
     $('comprarFiltros').innerHTML = filtrosHtml(FILTROS.comprar, true, 'Buscar por legajo, nombre o centro…', ORDEN_COMPRAR);
     wireFiltrosBar($('comprarFiltros'), FILTROS.comprar, renderComprarTabla);
+    $('comprarSelBar').innerHTML = selBarHtml();
+    wireSelBar();
     renderComprarTabla();
-
-    var lim = $('cLimpiar');
-    if (lim) lim.addEventListener('click', function () { S.exclusiones = {}; cargarComprar(); });
     wirePedidoPane(v.pedido, v.horizonte);
   }
 
@@ -1434,18 +1402,62 @@
       return cmpTextoEs_(a.nombre, b.nombre); // nombre (default)
     });
   }
-  function renderComprarTabla() {
+  /** Clave de selección de una fila de compra. */
+  function claveComprar_(r) { return String(r.legajo).toUpperCase().replace(/\s+/g, '') + '|' + r.prenda; }
+
+  /** Filas de compra que pasan buscador + prenda + centro. */
+  function listaFiltradaComprar() {
     var f = FILTROS.comprar;
-    var list = comprarFilas.filter(function (r) {
+    return comprarFilas.filter(function (r) {
       if (f.prenda && String(r.prenda) !== f.prenda) return false;
+      if (f.centro && String(r.centro) !== f.centro) return false;
       return coincideBusqueda(f.q, [r.legajo, r.nombre, r.centro]);
     });
+  }
+
+  /** Barra de selección: filtro por centro + selección masiva + contador. */
+  function selBarHtml() {
+    var centros = {};
+    comprarFilas.forEach(function (r) { if (r.centro) centros[r.centro] = true; });
+    var opts = ['<option value="">Todos los centros</option>'].concat(
+      Object.keys(centros).sort(cmpTextoEs_).map(function (c) {
+        return '<option value="' + esc(c) + '"' + (FILTROS.comprar.centro === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+      })).join('');
+    return '<div class="sel-bar">' +
+      '<label class="inline">Centro <select id="cCentro">' + opts + '</select></label>' +
+      '<button id="cSelVis" class="btn btn-primary btn-sm">Seleccionar todo lo visible</button>' +
+      '<button id="cSelClear" class="btn btn-ghost btn-sm">Limpiar selección</button>' +
+      '<span id="cSelCount" class="muted"></span>' +
+    '</div>';
+  }
+
+  function wireSelBar() {
+    var sc = $('cCentro');
+    if (sc) sc.addEventListener('change', function () { FILTROS.comprar.centro = sc.value; renderComprarTabla(); });
+    var sv = $('cSelVis');
+    if (sv) sv.addEventListener('click', function () {
+      listaFiltradaComprar().forEach(function (r) { if (!r.faltaTalle) S.seleccion[claveComprar_(r)] = true; });
+      renderComprarTabla(); programarRefrescoPedido();
+    });
+    var cl = $('cSelClear');
+    if (cl) cl.addEventListener('click', function () { S.seleccion = {}; renderComprarTabla(); programarRefrescoPedido(); });
+  }
+
+  function actualizarContadorSel() {
+    var cnt = $('cSelCount'); if (!cnt) return;
+    var n = Object.keys(S.seleccion).length;
+    cnt.textContent = n ? (n + ' prenda(s) seleccionada(s)') : 'Nada seleccionado';
+  }
+
+  function renderComprarTabla() {
+    var f = FILTROS.comprar;
+    var list = listaFiltradaComprar();
     var cont = $('comprarTabla'); if (!cont) return;
+    actualizarContadorSel();
     if (!list.length) {
       cont.innerHTML = vacio(comprarFilas.length ? 'Nada coincide con el filtro.' : 'No hay prendas en este horizonte.');
       return;
     }
-    // Agrupa por persona (una tarjeta por operario, con sus prendas adentro).
     var porLeg = {}, orden = [];
     list.forEach(function (r) {
       var k = String(r.legajo).toUpperCase().replace(/\s+/g, '');
@@ -1453,84 +1465,57 @@
       porLeg[k].prendas.push(r);
     });
     ordenarGruposComprar_(orden, porLeg, f.orden);
-    var ayuda = comprarEditable
-      ? '<p class="muted mini" style="margin:0 0 8px">Tocá una prenda para marcarla como “no comprar”.</p>' : '';
     var filas = orden.map(function (k) { return filaPersonaComprar(porLeg[k], comprarEditable); }).join('');
-    cont.innerHTML = ayuda + '<div class="persona-lista">' + filas + '</div>';
-    if (comprarEditable) { wirePchips(); wireMotivosNoCompra(); }
+    cont.innerHTML = '<div class="persona-lista">' + filas + '</div>';
+    if (comprarEditable) wirePchips();
   }
 
-  /** Un renglón por persona: encabezado + prendas como chips + motivos (si hay excluidas). */
+  /** Un renglón por persona: tilde de persona + encabezado + prendas como chips. */
   function filaPersonaComprar(p, editable) {
     var critico = p.prendas.some(function (r) { return r.estado === 'CRITICO'; });
+    var comprables = p.prendas.filter(function (r) { return !r.faltaTalle; });
+    var todasSel = comprables.length > 0 && comprables.every(function (r) { return !!S.seleccion[claveComprar_(r)]; });
+    var chk = (editable && comprables.length)
+      ? '<input type="checkbox" class="pSelPersona" ' + (todasSel ? 'checked ' : '') + 'title="Elegir todas las prendas de esta persona"> '
+      : '';
     var chips = p.prendas.map(function (r) {
-      var clave = String(r.legajo).toUpperCase().replace(/\s+/g, '') + '|' + r.prenda;
-      var excl = editable && !!S.exclusiones[clave];
+      var clave = claveComprar_(r);
+      var sel = editable && !!S.seleccion[clave];
       var talleTxt = r.faltaTalle ? '<span class="badge sindato">falta talle</span>' : 't.<b>' + esc(r.talle) + '</b>';
-      var cls = 'pchip' + (r.faltaTalle ? ' pchip-sintalle' : '') + (excl ? ' excluida' : '');
-      var attrs = (editable && !r.faltaTalle) ? ' role="button" tabindex="0" title="Tocar para no comprar"' : '';
+      var cls = 'pchip' + (r.faltaTalle ? ' pchip-sintalle' : '') + (sel ? ' sel' : '');
+      var attrs = (editable && !r.faltaTalle) ? ' role="button" tabindex="0" title="Tocar para elegir / quitar"' : '';
       return '<span class="' + cls + '" data-clave="' + esc(clave) + '"' + attrs + '>' +
-        '<b>' + esc(PRENDA_LABEL[r.prenda] || r.prenda) + '</b>' + (r.grupo ? ' ' + esc(r.grupo) : '') +
+        (sel ? '✓ ' : '') + '<b>' + esc(PRENDA_LABEL[r.prenda] || r.prenda) + '</b>' + (r.grupo ? ' ' + esc(r.grupo) : '') +
         ' · ' + talleTxt + ' ' + badgeEstado(r.estado) + '</span>';
     }).join('');
     return '<div class="persona-linea' + (critico ? ' tiene-critico' : '') + '" data-legajo="' + esc(p.legajo) + '">' +
-      '<div class="pl-head"><b>' + esc(p.nombre || '(sin nombre)') + '</b> · ' + esc(p.legajo) +
+      '<div class="pl-head"><label class="inline">' + chk + '<b>' + esc(p.nombre || '(sin nombre)') + '</b></label> · ' + esc(p.legajo) +
         (p.centro ? ' · <span class="muted">' + esc(p.centro) + '</span>' : '') + '</div>' +
       '<div class="pl-prendas">' + chips + '</div>' +
-      (editable ? '<div class="pl-motivos">' + motivosPersonaHtml(p) + '</div>' : '') +
     '</div>';
   }
 
-  /** Inputs de motivo solo para las prendas EXCLUIDAS de esa persona. */
-  function motivosPersonaHtml(p) {
-    return p.prendas.filter(function (r) {
-      return !!S.exclusiones[String(r.legajo).toUpperCase().replace(/\s+/g, '') + '|' + r.prenda];
-    }).map(function (r) {
-      var clave = String(r.legajo).toUpperCase().replace(/\s+/g, '') + '|' + r.prenda;
-      return '<div class="mnc-wrap"><span class="mnc-lbl muted">' + esc(PRENDA_LABEL[r.prenda] || r.prenda) + ':</span>' +
-        '<input type="text" class="mnc-input" data-clave="' + esc(clave) + '" data-legajo="' + esc(r.legajo) +
-          '" data-prenda="' + esc(r.prenda) + '" value="' + esc(r.motivoNoCompra || '') + '" placeholder="¿por qué no se compra?"></div>';
-    }).join('');
-  }
-
-  /** Click/Enter en un chip de prenda togglea la exclusión y re-renderiza. */
+  /** Chips (elegir/quitar prenda) y tilde de persona (todas sus comprables). */
   function wirePchips() {
-    Array.prototype.forEach.call($('comprarTabla').querySelectorAll('.pchip[role="button"]'), function (chip) {
+    var cont = $('comprarTabla');
+    Array.prototype.forEach.call(cont.querySelectorAll('.pchip[role="button"]'), function (chip) {
       function toggle() {
         var k = chip.getAttribute('data-clave');
-        if (S.exclusiones[k]) delete S.exclusiones[k]; else S.exclusiones[k] = true;
-        renderComprarTabla();
-        programarRefrescoPedido();
+        if (S.seleccion[k]) delete S.seleccion[k]; else S.seleccion[k] = true;
+        renderComprarTabla(); programarRefrescoPedido();
       }
       chip.addEventListener('click', toggle);
-      chip.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
-      });
+      chip.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } });
     });
-  }
-
-  /** Guarda el motivo de "no compra" al salir del campo, solo si cambió. */
-  function wireMotivosNoCompra() {
-    Array.prototype.forEach.call($('comprarBody').querySelectorAll('.mnc-input'), function (inp) {
-      var sucio = false;
-      function guardar() {
-        if (!sucio) return;
-        sucio = false;
-        var clave = inp.getAttribute('data-clave');
-        var comentario = inp.value.trim();
-        var fila = comprarFilas.filter(function (x) {
-          return (String(x.legajo).toUpperCase().replace(/\s+/g, '') + '|' + x.prenda) === clave;
-        })[0];
-        if (fila) fila.motivoNoCompra = comentario;
-        var span = inp.parentNode.querySelector('.mnc-saved');
-        if (span) span.textContent = comentario ? 'Motivo: ' + comentario : '';
-        api('registrarNoCompra', { datos: {
-          legajo: inp.getAttribute('data-legajo'), prenda: inp.getAttribute('data-prenda'), comentario: comentario
-        } }).then(function () { toast('Motivo guardado.', 'ok'); }).catch(manejar);
-      }
-      inp.addEventListener('input', function () { sucio = true; });
-      inp.addEventListener('blur', guardar);
-      inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); } });
+    Array.prototype.forEach.call(cont.querySelectorAll('.pSelPersona'), function (chk) {
+      chk.addEventListener('change', function () {
+        var linea = chk.closest('.persona-linea');
+        Array.prototype.forEach.call(linea.querySelectorAll('.pchip[role="button"]'), function (chip) {
+          var k = chip.getAttribute('data-clave');
+          if (chk.checked) S.seleccion[k] = true; else delete S.seleccion[k];
+        });
+        renderComprarTabla(); programarRefrescoPedido();
+      });
     });
   }
 
@@ -1542,7 +1527,7 @@
   }
   function refrescarPedido() {
     var seq = ++comprarSeq;
-    api('armarPedido', { exclusiones: Object.keys(S.exclusiones), horizonte: S.horizonteComprar })
+    api('armarPedido', { seleccion: Object.keys(S.seleccion), horizonte: S.horizonteComprar })
       .then(function (ped) {
         if (seq !== comprarSeq) return;
         var pane = $('pedidoPane'); if (!pane) return;
@@ -1623,8 +1608,7 @@
 
     return '<h3 class="sub-tit">Pedido — ' + (esAhora ? 'a comprar ahora' : 'proyección a ' + (p.dias || 30) + ' días') + '</h3>' +
       chips +
-      (t.unidades ? matrices : vacio('No hay unidades para pedir (revisá exclusiones y talles).')) +
-      proveedoresHtml(p.proveedores) +
+      (t.unidades ? matrices : vacio('Elegí prendas arriba para armar el pedido.')) +
       avisos +
       accion;
   }
@@ -1656,54 +1640,22 @@
       body + totalRow + '</tbody></table></div></div>';
   }
 
-  function proveedoresHtml(pv) {
-    if (!pv || !pv.hayPrecios) {
-      return '<div class="card"><div class="card-tit">Proveedores</div>' +
-        '<p class="muted">No hay precios cargados en la hoja PROVEEDORES. Cargalos para ver la comparación.</p></div>';
-    }
-    var rows = pv.proveedores.map(function (e) {
-      var es = pv.ganador && pv.ganador.nombre === e.nombre;
-      return '<tr>' +
-        '<td>' + esc(e.nombre) + (es ? ' <span class="pill-ganador">ganador</span>' : '') + '</td>' +
-        '<td class="num">' + (e.completo ? money(e.total) : '<span class="muted">incompleto</span>') + '</td>' +
-        '<td class="muted">' + (e.completo ? '—' : 'no cotiza: ' + esc(e.faltan.join(', '))) + '</td>' +
-      '</tr>';
-    }).join('');
-
-    var split = '';
-    if (pv.split && pv.split.completo) {
-      var det = Object.keys(pv.split.porPrenda).map(function (pr) {
-        var x = pv.split.porPrenda[pr];
-        return esc(pr) + ': ' + esc(x.proveedor) + ' (' + money(x.precio) + ')';
-      }).join(' · ');
-      split = '<p class="muted" style="margin-top:10px"><b>Split informativo</b> (cada prenda al más barato): ' +
-        money(pv.split.total) + ' — ' + det +
-        (pv.split.ahorro !== null ? ' · ahorro vs. ganador: ' + money(pv.split.ahorro) : '') +
-        '.<br>No parte el pedido; es solo referencia.</p>';
-    }
-
-    return '<div class="card"><div class="card-tit">Comparación de proveedores</div>' +
-      tabla(['Proveedor', 'Total (todo el pedido)', 'Detalle'], rows) + split + '</div>';
-  }
-
   function confirmarCongelar(p, horizonte) {
     var t = p.totales || {};
-    var g = p.proveedores && p.proveedores.ganador;
     var esPrev = (horizonte === 'prevision');
     abrirModal('Congelar compra',
       (esPrev ? '<p class="muted">Estás congelando la <b>previsión a ' + (p.dias || 30) + ' días</b> (compra anticipada).</p>' : '') +
       '<p>Vas a guardar esta compra en el historial como constancia. No registra entregas ni reinicia relojes.</p>' +
       '<ul><li><b>' + (t.unidades || 0) + '</b> unidades (' +
-        (t.PANTALON || 0) + ' pant. · ' + (t.CAMISA || 0) + ' cam. · ' + (t.BOTIN || 0) + ' bot.)</li>' +
-        '<li>Proveedor ganador: ' + (g ? esc(g.nombre) + ' (' + money(g.total) + ')' : '—') + '</li></ul>' +
+        (t.PANTALON || 0) + ' pant. · ' + (t.CAMISA || 0) + ' cam. · ' + (t.BOTIN || 0) + ' bot.)</li></ul>' +
       '<div class="fila-botones"><button id="mOk" class="btn btn-ok">Confirmar y congelar</button>' +
         '<button id="mNo" class="btn btn-ghost">Cancelar</button></div>');
     $('mNo').addEventListener('click', cerrarModal);
     $('mOk').addEventListener('click', function () {
       $('mOk').disabled = true;
-      api('congelarCompra', { exclusiones: Object.keys(S.exclusiones), horizonte: horizonte }).then(function (r) {
+      api('congelarCompra', { seleccion: Object.keys(S.seleccion), horizonte: horizonte }).then(function (r) {
         cerrarModal();
-        S.exclusiones = {};
+        S.seleccion = {};
         toast('Compra congelada: ' + r.id + '.', 'ok');
         ir('historial');
       }).catch(function (e) { $('mOk').disabled = false; manejar(e); });
@@ -1848,14 +1800,14 @@
       $('vista').innerHTML = encabezadoHist() +
         '<div id="histFiltros"></div>' +
         '<div id="histLista"></div>';
-      $('histFiltros').innerHTML = filtrosHtml(FILTROS.historial, false, 'Buscar por ID, proveedor, fecha o usuario…');
+      $('histFiltros').innerHTML = filtrosHtml(FILTROS.historial, false, 'Buscar por ID, fecha o usuario…');
       wireFiltrosBar($('histFiltros'), FILTROS.historial, renderHistorialLista);
       renderHistorialLista();
     }).catch(manejar);
   };
   function renderHistorialLista() {
     var list = historialLista.filter(function (h) {
-      return coincideBusqueda(FILTROS.historial.q, [h.id, h.proveedorGanador, h.fechaCorrida, h.fechaCongelado, h.usuario]);
+      return coincideBusqueda(FILTROS.historial.q, [h.id, h.fechaCorrida, h.fechaCongelado, h.usuario]);
     });
     var cont = $('histLista'); if (!cont) return;
     if (!list.length) { cont.innerHTML = vacio('Nada coincide con el filtro.'); return; }
@@ -1863,11 +1815,9 @@
       return '<tr data-id="' + esc(h.id) + '" class="hist-row" style="cursor:pointer">' +
         '<td>' + esc(h.id) + '</td><td>' + esc(h.fechaCorrida) + '</td><td>' + esc(h.fechaCongelado) + '</td>' +
         '<td>' + esc(h.usuario) + '</td>' +
-        '<td class="num">' + h.totalUnidades + '</td>' +
-        '<td>' + esc(h.proveedorGanador || '—') + '</td>' +
-        '<td class="num">' + money(h.costoGanador) + '</td></tr>';
+        '<td class="num">' + h.totalUnidades + '</td></tr>';
     }).join('');
-    cont.innerHTML = tabla(['ID', 'Corrida', 'Congelado', 'Usuario', 'Unid.', 'Ganador', 'Costo'], rows);
+    cont.innerHTML = tabla(['ID', 'Corrida', 'Congelado', 'Usuario', 'Unid.'], rows);
     Array.prototype.forEach.call(cont.querySelectorAll('.hist-row'), function (tr) {
       tr.addEventListener('click', function () { verDetalleHist(tr.getAttribute('data-id')); });
     });
@@ -1881,7 +1831,6 @@
     api('detalleHistorial', { id: id }).then(function (d) {
       var det = d.detalle || {};
       var t = det.totales || {};
-      var g = det.proveedores && det.proveedores.ganador;
       var matr = ['PANTALON', 'CAMISA', 'BOTIN'].map(function (pr) {
         return det.matrices ? matrizHtml(pr, det.matrices[pr]) : '';
       }).join('');
@@ -1889,8 +1838,7 @@
         '<p><b>Corrida:</b> ' + esc(d.fechaCorrida) + ' · <b>Congelado:</b> ' + esc(d.fechaCongelado) +
           ' · <b>Por:</b> ' + esc(d.usuario) + '</p>' +
         (det.editado ? '<p class="muted">✏️ Editada el ' + esc(det.editado) + (det.editadoPor ? ' por ' + esc(det.editadoPor) : '') + '.</p>' : '') +
-        '<p><b>Totales:</b> ' + (t.unidades || 0) + ' u (' + (t.PANTALON || 0) + '/' + (t.CAMISA || 0) + '/' + (t.BOTIN || 0) + ')' +
-          ' · <b>Ganador:</b> ' + (g ? esc(g.nombre) + ' ' + money(g.total) : '—') + '</p>' +
+        '<p><b>Totales:</b> ' + (t.unidades || 0) + ' u (' + (t.PANTALON || 0) + '/' + (t.CAMISA || 0) + '/' + (t.BOTIN || 0) + ')</p>' +
         '<div class="fila-botones"><button id="hEditar" class="btn btn-primary">Editar ítems</button></div>' +
         (matr || vacio('Sin matrices guardadas.'));
       $('hEditar').addEventListener('click', function () { editarCompraHist_(id, det); });
@@ -1922,7 +1870,7 @@
       return '<option value="' + pr + '">' + esc(PRENDA_LABEL[pr] || pr) + '</option>';
     }).join('');
     $('modalCuerpo').innerHTML =
-      '<p class="muted">Agregá o quitá prendas de esta compra congelada. Al guardar se recalculan totales y proveedor ganador. ' +
+      '<p class="muted">Agregá o quitá prendas de esta compra congelada. Al guardar se recalculan los totales. ' +
         'Si es la última compra congelada, también se actualiza lo pendiente de entregar.</p>' +
       '<div class="tabla-wrap"><table class="tabla" id="heTabla"><thead><tr>' +
         '<th>Legajo</th><th>Nombre</th><th>Prenda</th><th>Talle</th><th></th>' +
@@ -2407,19 +2355,15 @@
     { key: 'TALLE CAM', label: 'Talles camisa' },
     { key: 'TALLE BOTIN', label: 'Talles botín' }
   ];
-  var ajProvState = { prendas: ['PANTALON', 'CAMISA', 'BOTIN'], filas: [] };
-
   RENDER.ajustes = function () {
     $('vista').innerHTML =
       '<h2 class="seccion-tit">Ajustes</h2>' +
-      '<p class="seccion-sub">Todo se edita acá: PIN, parámetros de cálculo, proveedores y listas. Sin tocar la planilla.</p>' +
+      '<p class="seccion-sub">Todo se edita acá: PIN, parámetros de cálculo y listas. Sin tocar la planilla.</p>' +
       '<div id="ajPin"></div>' +
       '<div id="ajParam"></div>' +
-      '<div id="ajProv"></div>' +
       '<div id="ajListas"></div>';
     pintarAjPin();
     pintarAjParametros();
-    cargarAjProveedores();
     pintarAjListas();
   };
 
@@ -2490,86 +2434,6 @@
     });
   }
 
-  /* --- Proveedores y precios --- */
-  function cargarAjProveedores() {
-    $('ajProv').innerHTML = '<h3 class="sub-tit" style="margin-top:18px">Proveedores y precios</h3>' + cargando();
-    api('listarProveedores').then(pintarAjProveedores).catch(function (e) {
-      $('ajProv').innerHTML = '<h3 class="sub-tit" style="margin-top:18px">Proveedores y precios</h3>' +
-        '<div class="error">' + esc(e.message) + '</div>';
-    });
-  }
-  function pintarAjProveedores(data) {
-    data = data || {};
-    ajProvState = {
-      prendas: data.prendas || ['PANTALON', 'CAMISA', 'BOTIN'],
-      filas: (data.proveedores || []).map(function (p) {
-        var pr = p.precios || {};
-        return { nombre: p.nombre || '', precios: {
-          PANTALON: numOrEmpty(pr.PANTALON), CAMISA: numOrEmpty(pr.CAMISA), BOTIN: numOrEmpty(pr.BOTIN)
-        } };
-      })
-    };
-    renderAjProvTabla();
-  }
-  function renderAjProvTabla() {
-    var st = ajProvState;
-    var head = '<tr><th>Proveedor</th>' + st.prendas.map(function (pr) { return '<th>' + esc(pr) + '</th>'; }).join('') + '<th></th></tr>';
-    var rows = st.filas.map(function (f, i) {
-      var celdas = st.prendas.map(function (pr) {
-        return '<td><input type="number" min="0" step="0.01" class="apv-precio" data-i="' + i + '" data-pr="' + pr + '" value="' + esc(f.precios[pr]) + '" style="width:108px"></td>';
-      }).join('');
-      return '<tr><td><input type="text" class="apv-nombre" data-i="' + i + '" value="' + esc(f.nombre) + '" placeholder="Nombre"></td>' +
-        celdas + '<td><button class="btn btn-ghost apv-quitar" data-i="' + i + '">Quitar</button></td></tr>';
-    }).join('');
-    var puedeAgregar = st.filas.length < 5;
-    $('ajProv').innerHTML =
-      '<h3 class="sub-tit" style="margin-top:18px">Proveedores y precios</h3>' +
-      '<p class="muted">Hasta 5 proveedores. Precio por prenda (no varía por color ni talle). Dejá vacío lo que no cotiza.</p>' +
-      '<div class="card">' +
-        '<div class="tabla-wrap"><table class="tabla"><thead>' + head + '</thead><tbody>' +
-          (rows || '<tr><td colspan="5" class="muted">Todavía no hay proveedores. Agregá uno.</td></tr>') + '</tbody></table></div>' +
-        '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
-          (puedeAgregar ? '<button id="apvAgregar" class="btn btn-ghost">+ Proveedor</button>' : '') +
-          '<button id="apvGuardar" class="btn btn-primary">Guardar proveedores</button>' +
-        '</div>' +
-      '</div>';
-    Array.prototype.forEach.call($('ajProv').querySelectorAll('.apv-nombre'), function (inp) {
-      inp.addEventListener('input', function () { ajProvState.filas[Number(inp.getAttribute('data-i'))].nombre = inp.value; });
-    });
-    Array.prototype.forEach.call($('ajProv').querySelectorAll('.apv-precio'), function (inp) {
-      inp.addEventListener('input', function () {
-        ajProvState.filas[Number(inp.getAttribute('data-i'))].precios[inp.getAttribute('data-pr')] = inp.value;
-      });
-    });
-    Array.prototype.forEach.call($('ajProv').querySelectorAll('.apv-quitar'), function (b) {
-      b.addEventListener('click', function () {
-        ajProvState.filas.splice(Number(b.getAttribute('data-i')), 1);
-        renderAjProvTabla();
-      });
-    });
-    if (puedeAgregar) $('apvAgregar').addEventListener('click', function () {
-      ajProvState.filas.push({ nombre: '', precios: { PANTALON: '', CAMISA: '', BOTIN: '' } });
-      renderAjProvTabla();
-    });
-    $('apvGuardar').addEventListener('click', guardarAjProveedores);
-  }
-  function guardarAjProveedores() {
-    var proveedores = ajProvState.filas
-      .filter(function (f) { return String(f.nombre || '').trim(); })
-      .map(function (f) {
-        return { nombre: String(f.nombre).trim(), precios: {
-          PANTALON: aPrecioGuardar(f.precios.PANTALON),
-          CAMISA: aPrecioGuardar(f.precios.CAMISA),
-          BOTIN: aPrecioGuardar(f.precios.BOTIN)
-        } };
-      });
-    var btn = $('apvGuardar'); btn.disabled = true;
-    api('guardarProveedores', { datos: { proveedores: proveedores } }).then(function () {
-      toast('Proveedores guardados.', 'ok');
-      cargarAjProveedores();
-    }).catch(function (e) { btn.disabled = false; manejar(e); });
-  }
-
   /* --- Listas --- */
   function pintarAjListas() {
     var L = S.listas || {};
@@ -2607,13 +2471,6 @@
     if (!m) return '';
     var yy = m[3].length === 2 ? '20' + m[3] : m[3];
     return yy + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
-  }
-  function numOrEmpty(v) { return (v === null || v === undefined || v === '') ? '' : String(v); }
-  function aPrecioGuardar(v) {
-    var s = String(v == null ? '' : v).trim();
-    if (s === '') return '';
-    var n = Number(s);
-    return isFinite(n) ? n : s; // inválido: lo manda igual y el backend devuelve el mensaje claro
   }
 
   /* ===================== Wire global ===================== */

@@ -165,17 +165,6 @@ function _probarConfigEscritura() {
     return h + '=' + ((rel[h] || []).length);
   }).join('  '));
 
-  // 3) Proveedores: leer la matriz y reescribirla igual.
-  var prov = listarProveedores_();
-  guardarProveedores_({ proveedores: prov.proveedores });
-  invalidarCache_();
-  var relProv = listarProveedores_();
-  out.push('PROVEEDORES ' + relProv.proveedores.map(function (p) {
-    return p.nombre + '{' + PRENDAS.map(function (k) {
-      return k.charAt(0) + ':' + (p.precios[k] === null ? '-' : p.precios[k]);
-    }).join(',') + '}';
-  }).join('  '));
-
   var msg = 'OK round-trip Fase 2\n' + out.join('\n');
   Logger.log(msg);
   return msg;

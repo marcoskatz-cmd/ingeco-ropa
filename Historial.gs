@@ -7,14 +7,13 @@
  * efectiva (que reinicia el reloj) se registra aparte, cuando la ropa llega.
  */
 
-/** Congela la compra de la corrida actual (o de la previsión si horizonte='prevision'). */
-function congelarCompra_(usuario, exclusiones, horizonte) {
-  var pedido = armarPedido_(exclusiones, horizonte);
+/** Congela la compra de lo SELECCIONADO (corrida actual o previsión). */
+function congelarCompra_(usuario, seleccion, horizonte) {
+  var pedido = armarPedido_(seleccion, horizonte);
   if (!pedido.totales.unidades) {
-    throw new Error('No hay unidades para congelar en esta corrida.');
+    throw new Error('No hay unidades para congelar. Elegí al menos una prenda.');
   }
   var id = nuevoIdCorrida_();
-  var ganador = (pedido.proveedores && pedido.proveedores.ganador) || null;
 
   var fila = {
     'ID_CORRIDA': id,
@@ -25,8 +24,8 @@ function congelarCompra_(usuario, exclusiones, horizonte) {
     'TOTAL_CAMISA': pedido.totales.CAMISA || 0,
     'TOTAL_BOTIN': pedido.totales.BOTIN || 0,
     'TOTAL_UNIDADES': pedido.totales.unidades || 0,
-    'PROVEEDOR_GANADOR': ganador ? ganador.nombre : '',
-    'COSTO_GANADOR': ganador ? ganador.total : '',
+    'PROVEEDOR_GANADOR': '',
+    'COSTO_GANADOR': '',
     'DETALLE_JSON': JSON.stringify(resumenParaHistorial_(pedido))
   };
   appendFilaPorHeader_(SHEETS.HISTORIAL, fila);
@@ -35,9 +34,7 @@ function congelarCompra_(usuario, exclusiones, horizonte) {
     ok: true,
     id: id,
     fechaCorrida: fila.FECHA_CORRIDA,
-    totales: pedido.totales,
-    proveedorGanador: fila.PROVEEDOR_GANADOR,
-    costoGanador: fila.COSTO_GANADOR
+    totales: pedido.totales
   };
 }
 
@@ -53,7 +50,6 @@ function resumenParaHistorial_(pedido) {
     fechaCorrida: pedido.fechaCorrida,
     totales: pedido.totales,
     matrices: pedido.matrices,
-    proveedores: pedido.proveedores,
     incluidas: (pedido.incluidas || []).map(filaResumenHistorial_),
     excluidas: (pedido.excluidas || []).map(filaResumenHistorial_),
     sinTalle: (pedido.sinTalle || []).map(filaResumenHistorial_)
@@ -139,12 +135,8 @@ function editarCompraCongelada_(idCorrida, items, usuario) {
     totales[pr] = m.total;
     totales.unidades += m.total;
   });
-  var proveedores = valorizarPedido_(totales);
-  var ganador = (proveedores && proveedores.ganador) || null;
-
   detalle.totales = totales;
   detalle.matrices = matrices;
-  detalle.proveedores = proveedores;
   detalle.incluidas = incluidas.map(filaResumenHistorial_);
   detalle.editado = fmtFecha_(hoy_());
   detalle.editadoPor = usuario || '';
@@ -157,15 +149,11 @@ function editarCompraCongelada_(idCorrida, items, usuario) {
   setCol('TOTAL_CAMISA', totales.CAMISA || 0);
   setCol('TOTAL_BOTIN', totales.BOTIN || 0);
   setCol('TOTAL_UNIDADES', totales.unidades || 0);
-  setCol('PROVEEDOR_GANADOR', ganador ? ganador.nombre : '');
-  setCol('COSTO_GANADOR', ganador ? ganador.total : '');
+  setCol('PROVEEDOR_GANADOR', '');
+  setCol('COSTO_GANADOR', '');
   setCol('DETALLE_JSON', JSON.stringify(detalle));
 
-  return {
-    ok: true, id: idCorrida, totales: totales,
-    proveedorGanador: ganador ? ganador.nombre : '',
-    costoGanador: ganador ? ganador.total : ''
-  };
+  return { ok: true, id: idCorrida, totales: totales };
 }
 
 /** Detalle completo (DETALLE_JSON parseado) de una corrida del historial. */

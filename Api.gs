@@ -46,8 +46,6 @@ function enrutar_(metodo, p, sesion) {
     // --- Escritura de configuración (Ajustes) ---
     case 'guardarParametros': return guardarParametros_(p.datos || p);
     case 'guardarListas': return guardarListas_(p.datos || p);
-    case 'listarProveedores': return listarProveedores_();
-    case 'guardarProveedores': return guardarProveedores_(p.datos || p);
 
     // --- Padrón (PERSONAL) ---
     case 'listarPersonal': return listarPersonal_(p.soloActivos !== false);
@@ -65,10 +63,10 @@ function enrutar_(metodo, p, sesion) {
     case 'historialOperario': return historialOperario_(p.legajo);
 
     // --- Comprar (corrida + previsión + pedido, unificado) ---
-    case 'vistaComprar': return vistaComprar_(p.horizonte, p.exclusiones || []);
+    case 'vistaComprar': return vistaComprar_(p.horizonte, p.seleccion || []);
     case 'calcularCorrida': return calcularCorrida_();
     case 'generarPrevision': return generarPrevision_();
-    case 'armarPedido': return armarPedido_(p.exclusiones || [], p.horizonte);
+    case 'armarPedido': return armarPedido_(p.seleccion || [], p.horizonte);
     case 'registrarNoCompra': return registrarNoCompra_(p.datos || p, usuario);
 
     // --- Cruce RRHH ---
@@ -76,7 +74,7 @@ function enrutar_(metodo, p, sesion) {
     case 'aplicarCambiosCruce': return aplicarCambiosCruce_(p.cambios || []);
 
     // --- Historial (congelar compra) ---
-    case 'congelarCompra': return congelarCompra_(usuario, p.exclusiones || [], p.horizonte);
+    case 'congelarCompra': return congelarCompra_(usuario, p.seleccion || [], p.horizonte);
     case 'listarHistorial': return listarHistorial_();
     case 'detalleHistorial': return detalleHistorial_(p.id);
     case 'editarCompraCongelada': return editarCompraCongelada_(p.id, p.items || [], usuario);
