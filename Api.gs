@@ -76,7 +76,7 @@ function enrutar_(metodo, p, sesion) {
     case 'aplicarCambiosCruce': return aplicarCambiosCruce_(p.cambios || []);
 
     // --- Historial (congelar compra) ---
-    case 'congelarCompra': return congelarCompra_(usuario, p.exclusiones || []);
+    case 'congelarCompra': return congelarCompra_(usuario, p.exclusiones || [], p.horizonte);
     case 'listarHistorial': return listarHistorial_();
     case 'detalleHistorial': return detalleHistorial_(p.id);
     case 'editarCompraCongelada': return editarCompraCongelada_(p.id, p.items || [], usuario);

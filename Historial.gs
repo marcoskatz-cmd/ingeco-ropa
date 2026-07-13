@@ -7,9 +7,9 @@
  * efectiva (que reinicia el reloj) se registra aparte, cuando la ropa llega.
  */
 
-/** Congela la compra de la corrida actual. Devuelve el registro guardado. */
-function congelarCompra_(usuario, exclusiones) {
-  var pedido = armarPedido_(exclusiones);
+/** Congela la compra de la corrida actual (o de la previsión si horizonte='prevision'). */
+function congelarCompra_(usuario, exclusiones, horizonte) {
+  var pedido = armarPedido_(exclusiones, horizonte);
   if (!pedido.totales.unidades) {
     throw new Error('No hay unidades para congelar en esta corrida.');
   }
