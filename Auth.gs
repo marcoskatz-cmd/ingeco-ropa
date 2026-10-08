@@ -93,6 +93,24 @@ function loginPin_(pin) {
   return { ok: true, token: emitirToken_(IDENTIDAD_FIJA), nombre: IDENTIDAD_FIJA };
 }
 
+/**
+ * Login desde la app INGECO (shell): valida el token del shell contra el backend común
+ * (módulo ROPA) y emite el token propio. Sin PIN. La identidad sigue siendo la fija.
+ */
+function loginShell_(t) {
+  var backend = PropertiesService.getScriptProperties().getProperty('APP_INGECO_BACKEND');
+  if (!backend) throw new Error('Acceso desde la app INGECO no configurado.');
+  if (!t) throw new Error('Token inválido.');
+  var r = UrlFetchApp.fetch(backend, {
+    method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true,
+    payload: JSON.stringify({ accion: 'validar_token', token: String(t), modulo: 'ROPA' })
+  });
+  var v = {};
+  try { v = JSON.parse(r.getContentText()); } catch (e) {}
+  if (!v.ok) throw new Error(v.error || 'Acceso no autorizado desde la app INGECO.');
+  return { ok: true, token: emitirToken_(IDENTIDAD_FIJA), nombre: IDENTIDAD_FIJA, via: v.nombre_visible };
+}
+
 /** Cambia el PIN de acceso. Sólo accesible desde una sesión válida. */
 function cambiarPinAcceso_(pinNuevo) {
   if (!/^\d{4}$/.test(String(pinNuevo))) {

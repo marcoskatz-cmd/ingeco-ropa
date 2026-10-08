@@ -10,7 +10,7 @@
  */
 
 // Métodos que NO requieren token (pantalla de login).
-var METODOS_PUBLICOS = { loginPin: true };
+var METODOS_PUBLICOS = { loginPin: true, loginShell: true };
 
 function apiCall(metodo, payloadJson) {
   try {
@@ -31,6 +31,7 @@ function enrutar_(metodo, p, sesion) {
   switch (metodo) {
     // --- Pre-login ---
     case 'loginPin': return loginPin_(p.pin);
+    case 'loginShell': return loginShell_(p.t);
 
     // --- Sesión / PIN ---
     case 'sesion': return { nombre: usuario };

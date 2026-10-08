@@ -2070,6 +2070,15 @@
     var tok = null, usr = null;
     try { tok = sessionStorage.getItem('ropa_token'); usr = sessionStorage.getItem('ropa_user'); } catch (e) {}
     if (tok) { S.token = tok; S.usuario = usr || ''; iniciarApp(); }
+    else if (window.SHELL_TOKEN) {
+      // Vino desde la app INGECO: canjear el token del shell por la sesión propia, sin PIN.
+      $('btnLogin').disabled = true;
+      rawCall('loginShell', { t: window.SHELL_TOKEN }).then(function (res) {
+        S.token = res.token; S.usuario = res.nombre;
+        try { sessionStorage.setItem('ropa_token', res.token); sessionStorage.setItem('ropa_user', res.nombre); } catch (e) {}
+        iniciarApp();
+      }).catch(function (e) { $('btnLogin').disabled = false; mostrarLoginError(e.message); $('loginPin').focus(); });
+    }
     else { $('loginPin').focus(); }
   });
 })();
