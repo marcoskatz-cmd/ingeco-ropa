@@ -13,7 +13,7 @@ function doGet(e) {
     // Embebible dentro de la app INGECO (shell).
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   // Acceso desde la app INGECO: ?t=<token del shell>. Se inyecta sanitizado para que el front lo canjee.
-  var t = (e && e.parameter && e.parameter.t) ? String(e.parameter.t) : '';
+  var t = (e && e.parameter && (e.parameter.tk || e.parameter.t)) ? String(e.parameter.tk || e.parameter.t) : '';
   if (/^[A-Za-z0-9_-]{20,120}$/.test(t)) out.append('<script>window.SHELL_TOKEN=' + JSON.stringify(t) + ';</script>');
   return out;
 }

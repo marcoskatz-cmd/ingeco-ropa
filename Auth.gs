@@ -103,7 +103,7 @@ function loginShell_(t) {
   if (!t) throw new Error('Token inválido.');
   var r = UrlFetchApp.fetch(backend, {
     method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true,
-    payload: JSON.stringify({ accion: 'validar_token', token: String(t), modulo: 'ROPA' })
+    payload: JSON.stringify({ accion: 'validar_ticket', payload: { ticket: String(t), modulo: 'ROPA' } })
   });
   var v = {};
   try { v = JSON.parse(r.getContentText()); } catch (e) {}
