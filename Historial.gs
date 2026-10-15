@@ -30,6 +30,7 @@ function congelarCompra_(usuario, exclusiones) {
     'DETALLE_JSON': JSON.stringify(resumenParaHistorial_(pedido))
   };
   appendFilaPorHeader_(SHEETS.HISTORIAL, fila);
+  try { notificarAppIngeco_('ROPA', { destinatarios: [{ con_modulo: 'ROPA' }], tipo: 'aviso_general', prioridad: 'normal', titulo: 'Compra de ropa congelada: ' + fila.TOTAL_UNIDADES + ' unidades', cuerpo: fila.TOTAL_PANTALON + ' pantalones · ' + fila.TOTAL_CAMISA + ' camisas · ' + fila.TOTAL_BOTIN + ' botines' + (fila.PROVEEDOR_GANADOR ? ' · ' + fila.PROVEEDOR_GANADOR : '') + (usuario ? ' · por ' + usuario : ''), clave_unica: 'ropa-' + id }); } catch (eAv) { }
 
   return {
     ok: true,
