@@ -194,7 +194,10 @@ function confirmarEntregas_(datos, usuario) {
   }
 
   var resultado = { ok: true };
-  if (hayItems) resultado.entrega = registrarEntrega_(datos);
+  if (hayItems) {
+    resultado.entrega = registrarEntrega_(datos);
+    try { var opAv = buscarOperario_(datos.legajo); notificarAppIngeco_('ROPA', { destinatarios: [{ con_modulo: 'ROPA' }], tipo: 'aviso_general', prioridad: 'normal', titulo: 'Ropa entregada a ' + (opAv ? opAv[P.NOMBRE] : 'legajo ' + datos.legajo), cuerpo: datos.items.map(function (it) { return String(it.prenda || it).toLowerCase(); }).join(', ') + (usuario ? ' · por ' + usuario : ''), clave_unica: 'entrega-' + datos.legajo + '-' + Date.now() }); } catch (eAv) { }
+  }
   if (hayNota) {
     registrarNoEntrega_({
       legajo: datos.legajo, fecha: datos.fecha,
